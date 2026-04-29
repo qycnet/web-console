@@ -2,6 +2,7 @@ import { Router, Response } from 'express'
 import si from 'systeminformation'
 import os from 'os'
 import { logger } from '../utils/logger.js'
+import { io } from '../index.js'
 
 const router = Router()
 
@@ -95,6 +96,61 @@ router.get('/logs', async (req, res: Response) => {
     logger.error('Failed to get logs:', error)
     res.status(500).json({ error: '获取日志失败' })
   }
+})
+
+// 接收前端错误上报
+router.post('/errors', async (req, res: Response) => {
+  try {
+    const error = req.body
+    logger.error('Frontend Error:', error)
+    res.json({ received: true })
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to record error' })
+  }
+})
+
+// 实时推送日志
+let logInterval: NodeJS.Timeout | null = null
+
+io.on('connection', (socket) => {
+  socket.on('subscribe:logs', () => {
+    socket.join('logs')
+
+    // 模拟实时日志推送
+    if (!logInterval) {
+      logInterval = setInterval(() => {
+        const levels = ['INFO', 'DEBUG', 'WARN', 'ERROR']
+        const messages = [
+          'Processing request',
+          'Cache hit',
+          'Database query executed',
+          'API response sent',
+          'Memory usage normal'
+        ]
+
+        const log = {
+          level: levels[Math.floor(Math.random() * levels.length)],
+          message: messages[Math.floor(Math.random() * messages.length)],
+          timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19)
+        }
+
+        io.to('logs').emit('log', log)
+      }, 3000)
+    }
+  })
+
+  socket.on('unsubscribe:logs', () => {
+    socket.leave('logs')
+
+    // 如果没有订阅者，停止推送
+    const room = io.sockets.adapter.rooms.get('logs')
+    if (!room || room.size === 0) {
+      if (logInterval) {
+        clearInterval(logInterval)
+        logInterval = null
+      }
+    }
+  })
 })
 
 export default router

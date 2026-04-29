@@ -51,15 +51,17 @@
         </n-tab-pane>
 
         <n-tab-pane name="json" tab="JSON 模式">
-          <div class="editor-container">
-            <n-button size="small" style="margin-bottom: 8px;" @click="handleFormatJson">
-              格式化
-            </n-button>
-            <n-input
-              v-model:value="jsonConfig"
-              type="textarea"
-              :rows="20"
-              placeholder="JSON 配置"
+          <div class="editor-wrapper">
+            <n-space style="margin-bottom: 8px;">
+              <n-button size="small" @click="handleFormatJson">格式化</n-button>
+              <n-button size="small" @click="handleValidateJson">验证</n-button>
+            </n-space>
+            <MonacoEditor
+              v-model="jsonConfig"
+              language="json"
+              :height="500"
+              :theme="themeStore.isDark ? 'vs-dark' : 'vs'"
+              @change="handleJsonChange"
             />
           </div>
           <n-space justify="end" style="margin-top: 16px;">
@@ -91,10 +93,14 @@ import {
 } from 'naive-ui'
 import { RefreshOutline, DownloadOutline } from '@vicons/ionicons5'
 import { api } from '@/api'
+import { useThemeStore } from '@/stores/theme'
+import MonacoEditor from '@/components/MonacoEditor.vue'
 
 const message = useMessage()
+const themeStore = useThemeStore()
 const activeTab = ref('form')
 const jsonConfig = ref('')
+const editorRef = ref()
 
 const config = ref({
   appName: 'OpenClaw',
@@ -116,12 +122,6 @@ watch(config, (val) => {
   jsonConfig.value = JSON.stringify(val, null, 2)
 }, { deep: true })
 
-watch(jsonConfig, (val) => {
-  try {
-    Object.assign(config.value, JSON.parse(val))
-  } catch {}
-})
-
 onMounted(async () => {
   try {
     const res = await api.config.list()
@@ -138,6 +138,15 @@ async function handleSave() {
     message.success('配置已保存')
   } catch (err) {
     message.error('保存失败')
+  }
+}
+
+function handleJsonChange(val: string) {
+  try {
+    const parsed = JSON.parse(val)
+    config.value = parsed
+  } catch {
+    // JSON 格式错误，不做处理
   }
 }
 
@@ -179,19 +188,30 @@ function handleFormatJson() {
   try {
     const parsed = JSON.parse(jsonConfig.value)
     jsonConfig.value = JSON.stringify(parsed, null, 2)
+    message.success('格式化成功')
   } catch {
     message.error('JSON 格式错误')
+  }
+}
+
+function handleValidateJson() {
+  try {
+    JSON.parse(jsonConfig.value)
+    message.success('JSON 格式正确')
+  } catch (e: any) {
+    message.error(`JSON 格式错误: ${e.message}`)
   }
 }
 </script>
 
 <style scoped>
 .config-page {
-  max-width: 800px;
+  max-width: 900px;
 }
 
-.editor-container {
+.editor-wrapper {
   background: var(--n-color);
   border-radius: 4px;
+  padding: 12px;
 }
 </style>

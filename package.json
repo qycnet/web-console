@@ -14,6 +14,8 @@
     "build": "npm run build --workspace=client && npm run build --workspace=server",
     "start": "npm run start --workspace=server",
     "test": "npm run test --workspaces",
+    "test:run": "npm run test:run --workspaces",
+    "test:coverage": "npm run test:coverage --workspaces",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx --fix"
   },
   "devDependencies": {
