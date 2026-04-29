@@ -107,38 +107,24 @@ web-console/
 ├── client/                    # 前端代码
 │   ├── src/
 │   │   ├── views/            # 页面组件（8个）
-│   │   │   ├── Dashboard.vue     # 仪表盘
-│   │   │   ├── Config.vue        # 配置管理
-│   │   │   ├── Files.vue         # 文件管理
-│   │   │   ├── Skills.vue        # 技能中心
-│   │   │   ├── Agents.vue        # Agent 管理
-│   │   │   ├── Users.vue         # 用户管理
-│   │   │   ├── Monitor.vue       # 系统监控
-│   │   │   └── Logs.vue          # 日志管理
-│   │   ├── components/        # 通用组件
-│   │   │   └── MonacoEditor.vue  # 代码编辑器
-│   │   ├── stores/            # Pinia 状态管理
-│   │   ├── router/            # 路由配置
-│   │   ├── api/               # API 接口封装
-│   │   ├── composables/       # 组合式函数
-│   │   │   └── useWebSocket.ts   # WebSocket Hook
-│   │   └── utils/             # 工具函数
-│   └── tests/                 # 前端测试
+│   │   ├── components/       # 通用组件
+│   │   ├── stores/           # Pinia 状态管理
+│   │   ├── router/           # 路由配置
+│   │   ├── api/              # API 接口封装
+│   │   ├── composables/      # 组合式函数
+│   │   └── utils/            # 工具函数
+│   └── tests/                # 前端测试
 ├── server/                    # 后端代码
 │   ├── src/
-│   │   ├── routes/            # API 路由（7个）
-│   │   ├── services/          # 核心服务
-│   │   │   ├── openclaw-service.ts  # OpenClaw 集成
-│   │   │   ├── skill-service.ts     # 技能管理
-│   │   │   └── user-service.ts      # 用户管理
-│   │   ├── middleware/        # 中间件
-│   │   │   └── auth.ts            # 认证/权限/审计
-│   │   └── utils/             # 工具函数
-│   └── tests/                 # 后端测试
-└── docs/                      # 文档
-    ├── requirements.md        # 需求文档
-    ├── api.md                 # API 文档
-    └── deployment.md          # 部署文档
+│   │   ├── routes/           # API 路由（7个）
+│   │   ├── services/         # 核心服务
+│   │   ├── middleware/       # 中间件
+│   │   └── utils/            # 工具函数
+│   └── tests/                # 后端测试
+└── docs/                     # 文档
+    ├── requirements.md       # 需求文档
+    ├── api.md                # API 文档
+    └── deployment.md         # 部署文档
 ```
 
 ## 🧪 测试
@@ -163,8 +149,6 @@ npm run test:coverage
 - Files 路由测试
 
 ## 🔧 配置
-
-复制环境变量模板：
 
 ```bash
 cp .env.example .env
@@ -194,24 +178,6 @@ pm2 start npm --name "openclaw-console" -- start
 # 开机自启
 pm2 save
 pm2 startup
-```
-
-### Nginx 反向代理（可选）
-
-```nginx
-server {
-    listen 80;
-    server_name console.openclaw.ai;
-
-    location / {
-        proxy_pass http://127.0.0.1:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
 ```
 
 ## 📚 API 文档
@@ -279,10 +245,7 @@ git push origin feature/your-feature
 
 ## 📄 License
 
-[MIT](LICENSE) © qycnet
+[MIT](./LICENSE) © 2024 qycnet
 
 ---
 
-<p align="center">
-  Made with ❤️ by <a href="https://github.com/qycnet">qycnet</a>
-</p>
