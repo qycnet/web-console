@@ -14,12 +14,13 @@ OpenClaw 的现代化 Web 管理界面，提供配置管理、文件操作、技
 |------|----------|
 | 🔐 **认证与权限** | 本地免密登录、JWT Token、三级角色权限（admin/user/viewer） |
 | 👥 **用户管理** | 用户 CRUD、角色分配、状态管理、审计日志 |
-| ⚙️ **配置管理** | 可视化编辑、JSON 模式、热重载、备份恢复 |
+| ⚙️ **配置管理** | 可视化编辑、JSON 模式、热重载、备份恢复、字段加密 |
 | 📁 **文件管理** | 在线浏览、Monaco 编辑器、上传下载、安全路径检查 |
 | 🎯 **技能中心** | 技能市场、一键安装/卸载、中文支持、分类搜索 |
 | 🤖 **Agent 管理** | 列表查看、启停控制、实时监控、Web 对话 |
 | 📊 **系统监控** | CPU/内存/磁盘、进程管理、实时日志推送 |
 | 📝 **代码编辑** | Monaco Editor、语法高亮、多语言支持 |
+| 🚨 **告警管理** | 告警规则、条件引擎、等级设置、事件追溯 |
 
 ### 安全特性
 
@@ -29,6 +30,7 @@ OpenClaw 的现代化 Web 管理界面，提供配置管理、文件操作、技
 - ✅ 完整操作审计日志
 - ✅ 前端错误上报
 - ✅ 文件路径安全检查
+- ✅ 敏感字段 AES-256-GCM 加密
 
 ### OpenClaw 集成
 
@@ -106,7 +108,7 @@ npm start
 web-console/
 ├── client/                    # 前端代码
 │   ├── src/
-│   │   ├── views/            # 页面组件（8个）
+│   │   ├── views/            # 页面组件（9个）
 │   │   ├── components/       # 通用组件
 │   │   ├── stores/           # Pinia 状态管理
 │   │   ├── router/           # 路由配置
@@ -116,7 +118,7 @@ web-console/
 │   └── tests/                # 前端测试
 ├── server/                    # 后端代码
 │   ├── src/
-│   │   ├── routes/           # API 路由（7个）
+│   │   ├── routes/           # API 路由（8个）
 │   │   ├── services/         # 核心服务
 │   │   ├── middleware/       # 中间件
 │   │   └── utils/            # 工具函数
@@ -218,6 +220,21 @@ pm2 startup
 | POST | `/api/skills/install/:id` | 安装技能 |
 | DELETE | `/api/skills/:id` | 卸载技能 |
 
+### 告警 API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/alerts/rules` | 告警规则列表 |
+| POST | `/api/alerts/rules` | 创建规则 |
+| PUT | `/api/alerts/rules/:id` | 更新规则 |
+| DELETE | `/api/alerts/rules/:id` | 删除规则 |
+| POST | `/api/alerts/rules/:id/toggle` | 启用/禁用规则 |
+| GET | `/api/alerts/events` | 告警事件列表 |
+| POST | `/api/alerts/events/:id/acknowledge` | 确认告警 |
+| POST | `/api/alerts/events/:id/resolve` | 解决告警 |
+| POST | `/api/alerts/evaluate` | 手动触发指标评估 |
+| GET | `/api/alerts/stats` | 告警统计 |
+
 更多 API 请查看 [API 文档](./docs/api.md)
 
 ## 🤝 贡献
@@ -248,4 +265,3 @@ git push origin feature/your-feature
 [MIT](./LICENSE) © 2024 qycnet
 
 ---
-
