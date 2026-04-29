@@ -30,6 +30,9 @@ router.post('/login', strictRateLimiter, async (req: Request, res: Response) => 
       return res.status(401).json({ error: '用户名或密码错误' })
     }
 
+    // 检查管理员是否首次登录（需要强制修改默认密码）
+    const needsPasswordChange = user.password_changed === 0
+
     const token = jwt.sign(
       { userId: user.id, role: user.role },
       JWT_SECRET,
@@ -39,6 +42,7 @@ router.post('/login', strictRateLimiter, async (req: Request, res: Response) => 
     logger.info(`User logged in: ${username}`)
     res.json({
       token,
+      needsPasswordChange,
       user: { id: user.id, username: user.username, role: user.role }
     })
   } catch (error) {

@@ -6,6 +6,7 @@ import { Server as SocketServer } from 'socket.io'
 import { config } from 'dotenv'
 import { logger } from './utils/logger.js'
 import { rateLimiter } from './middleware/auth.js'
+import { wsAuthMiddleware } from './middleware/ws-auth.js'
 import { openclawService } from './services/openclaw-service.js'
 import { skillService } from './services/skill-service.js'
 import { alertEmitter, evaluateMetrics } from './services/alert-service.js'
@@ -28,6 +29,9 @@ const io = new SocketServer(httpServer, {
     credentials: true
   }
 })
+
+// WebSocket JWT 认证
+io.use(wsAuthMiddleware)
 
 const PORT = process.env.PORT || 3001
 

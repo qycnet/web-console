@@ -19,6 +19,7 @@ db.exec(`
     username TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
     role TEXT DEFAULT 'user',
+    password_changed INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -34,9 +35,9 @@ if (!adminExists) {
   const adminPassword = process.env.ADMIN_PASSWORD || crypto.randomBytes(4).toString('hex')
   const hashedPassword = bcrypt.hashSync(adminPassword, 10)
   db.prepare(`
-    INSERT INTO users (id, username, password, role)
-    VALUES (?, ?, ?, ?)
-  `).run('user-1', 'admin', hashedPassword, 'admin')
+    INSERT INTO users (id, username, password, role, password_changed)
+    VALUES (?, ?, ?, ?, ?)
+  `).run('user-1', 'admin', hashedPassword, 'admin', 0)
   console.log('\n⚠️  [DEFAULT ADMIN] username: admin  password: ' + adminPassword + '\n')
 }
 
@@ -52,9 +53,13 @@ export const database = {
   createUser: (id: string, username: string, password: string, role: string = 'user') => {
     const hashedPassword = bcrypt.hashSync(password, 10)
     return db.prepare(`
-      INSERT INTO users (id, username, password, role)
-      VALUES (?, ?, ?, ?)
-    `).run(id, username, hashedPassword, role)
+      INSERT INTO users (id, username, password, role, password_changed)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, username, hashedPassword, role, 1)
+  },
+
+  markPasswordChanged: (id: string) => {
+    return db.prepare('UPDATE users SET password_changed = 1 WHERE id = ?').run(id)
   },
 
   getSetting: (key: string) => {
