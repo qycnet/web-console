@@ -8,6 +8,7 @@
 - [文件 API](#文件-api)
 - [技能 API](#技能-api)
 - [Agent API](#agent-api)
+- [告警 API](#告警-api)
 - [监控 API](#监控-api)
 - [WebSocket 事件](#websocket-事件)
 - [错误响应](#错误响应)
@@ -19,7 +20,7 @@
 
 ### POST /api/auth/login
 
-用户登录
+用户登录。
 
 **请求体:**
 ```json
@@ -49,14 +50,13 @@
 - `400` - 用户名和密码必填
 - `401` - 用户名或密码错误
 
-**特殊说明:**
-- 本地访问（localhost/127.0.0.1）自动返回管理员 Token
+**特殊说明:** 本地访问（localhost/127.0.0.1）自动返回管理员 Token
 
 ---
 
 ### POST /api/auth/logout
 
-用户登出
+用户登出。
 
 **成功响应 (200):**
 ```json
@@ -69,12 +69,9 @@
 
 ### GET /api/auth/me
 
-获取当前登录用户信息
+获取当前登录用户信息。
 
-**请求头:**
-```
-Authorization: Bearer <token>
-```
+**请求头:** `Authorization: Bearer <token>`
 
 **成功响应 (200):**
 ```json
@@ -90,24 +87,19 @@ Authorization: Bearer <token>
 }
 ```
 
-**错误响应:**
-- `401` - 未授权 / Token 无效
+**错误响应:** `401` - 未授权 / Token 无效
 
 ---
 
 ## 用户 API
 
-> ⚠️ 所有用户 API 需要管理员权限
+> ⚠️ 需要管理员权限
 
 ### GET /api/users
 
-获取用户列表
+获取用户列表。
 
-**查询参数:**
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| page | number | 1 | 页码 |
-| limit | number | 20 | 每页数量 |
+**查询参数:** `page`(number, 默认1), `limit`(number, 默认20)
 
 **成功响应 (200):**
 ```json
@@ -137,7 +129,7 @@ Authorization: Bearer <token>
 
 ### POST /api/users
 
-创建用户
+创建用户。
 
 **请求体:**
 ```json
@@ -149,13 +141,7 @@ Authorization: Bearer <token>
 }
 ```
 
-**字段说明:**
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| username | string | ✅ | 用户名（唯一） |
-| password | string | ✅ | 密码 |
-| email | string | ❌ | 邮箱 |
-| role | string | ❌ | 角色：admin/user/viewer，默认 user |
+**字段说明:** `username`(必填), `password`(必填), `email`(可选), `role`(可选: admin/user/viewer, 默认user)
 
 **成功响应 (201):**
 ```json
@@ -169,29 +155,15 @@ Authorization: Bearer <token>
 }
 ```
 
-**错误响应:**
-- `400` - 用户名已存在 / 参数错误
+**错误响应:** `400` - 用户名已存在 / 参数错误
 
 ---
 
 ### PUT /api/users/:userId
 
-更新用户信息
+更新用户信息。
 
-**路径参数:**
-- `userId` - 用户 ID
-
-**请求体:**
-```json
-{
-  "email": "newemail@example.com",
-  "role": "admin",
-  "status": "active",
-  "password": "newpassword"
-}
-```
-
-**权限说明:**
+**字段:** `email`, `role`, `status`, `password`(可选)
 - 管理员可修改所有字段
 - 普通用户只能修改自己的 email 和 password
 
@@ -210,21 +182,7 @@ Authorization: Bearer <token>
 
 ### DELETE /api/users/:userId
 
-删除用户
-
-**请求头:**
-```
-X-Confirm-Action: true
-```
-
-> ⚠️ 需要二次确认
-
-**成功响应 (200):**
-```json
-{
-  "message": "用户已删除"
-}
-```
+删除用户。**请求头需包含** `X-Confirm-Action: true`（二次确认）。
 
 **错误响应:**
 - `400` - 不能删除管理员账户
@@ -234,7 +192,7 @@ X-Confirm-Action: true
 
 ### POST /api/users/change-password
 
-修改密码
+修改密码。
 
 **请求体:**
 ```json
@@ -244,30 +202,17 @@ X-Confirm-Action: true
 }
 ```
 
-**成功响应 (200):**
-```json
-{
-  "message": "密码修改成功"
-}
-```
+**成功响应 (200):** `{"message": "密码修改成功"}`
 
 ---
 
 ### GET /api/users/audit-logs
 
-获取审计日志
+获取审计日志。
 
-**查询参数:**
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| userId | string | 用户 ID（可选） |
-| action | string | 操作类型（可选） |
-| startDate | string | 开始日期 ISO 格式 |
-| endDate | string | 结束日期 ISO 格式 |
-| page | number | 页码 |
-| limit | number | 每页数量 |
+**查询参数:** `userId`, `action`, `startDate`, `endDate`, `page`, `limit`
 
-**成功响应 (200):**
+**成功响应:**
 ```json
 [
   {
@@ -289,9 +234,8 @@ X-Confirm-Action: true
 
 ### GET /api/config
 
-获取所有配置
+获取所有配置。
 
-**成功响应 (200):**
 ```json
 {
   "appName": "OpenClaw",
@@ -303,80 +247,36 @@ X-Confirm-Action: true
 }
 ```
 
----
-
 ### GET /api/config/:key
 
-获取单个配置项
-
-**路径参数:**
-- `key` - 配置键名
-
-**成功响应 (200):**
-```json
-"OpenClaw"
-```
-
----
+获取单个配置项。
 
 ### PUT /api/config/:key
 
-更新配置
+更新配置。key 为 `all` 时替换整个配置。
 
-**路径参数:**
-- `key` - 配置键名（使用 `all` 更新整个配置）
+**请求体:** `{"value": "NewAppName"}`
 
-**请求体:**
-```json
-{
-  "value": "NewAppName"
-}
-```
-
-**成功响应 (200):**
-```json
-{
-  "message": "配置已保存"
-}
-```
-
----
+**成功响应:** `{"message": "配置已保存"}`
 
 ### POST /api/config/reload
 
-热重载配置
-
-**成功响应 (200):**
-```json
-{
-  "message": "配置已重载"
-}
-```
-
----
+热重载配置。`{"message": "配置已重载"}`
 
 ### GET /api/config/backup
 
-备份配置（下载 JSON 文件）
-
-**响应:**
-- Content-Type: `application/json`
-- Content-Disposition: `attachment; filename=config-backup-{timestamp}.json`
+备份配置。下载 JSON 文件。
 
 ---
 
 ## 文件 API
 
-### GET /api/files
+### GET /api/files?path=/
 
-列出文件列表
+列出文件列表。
 
-**查询参数:**
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| path | string | 目录路径，默认 `/` |
+**查询参数:** `path`(string, 默认 `/`)
 
-**成功响应 (200):**
 ```json
 [
   {
@@ -396,123 +296,33 @@ X-Confirm-Action: true
 ]
 ```
 
----
+### GET /api/files/read?path=/
 
-### GET /api/files/read
-
-读取文件内容
-
-**查询参数:**
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| path | string | 文件路径 |
-
-**成功响应 (200):**
-```json
-"file content here..."
-```
-
----
+读取文件内容。**查询参数:** `path`
 
 ### PUT /api/files/write
 
-写入文件
-
-**请求体:**
-```json
-{
-  "path": "/test.txt",
-  "content": "Hello World"
-}
-```
-
-**成功响应 (200):**
-```json
-{
-  "message": "文件已保存"
-}
-```
-
----
+写入文件。**请求体:** `{"path": "/test.txt", "content": "Hello World"}`
 
 ### POST /api/files/upload
 
-上传文件
+上传文件。multipart/form-data，最大 100MB。
 
-**请求:**
-- Content-Type: `multipart/form-data`
-- 字段: `file` (文件)
-- 查询参数: `path` (目标目录)
+### GET /api/files/download?path=/
 
-**成功响应 (200):**
-```json
-{
-  "message": "文件已上传"
-}
-```
+下载文件。目录则打包为 ZIP。
 
-**限制:**
-- 最大文件大小: 100MB
+### DELETE /api/files?path=/
 
----
-
-### GET /api/files/download
-
-下载文件
-
-**查询参数:**
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| path | string | 文件/目录路径 |
-
-**响应:**
-- 文件: 直接下载
-- 目录: 打包为 ZIP 下载
-
----
-
-### DELETE /api/files
-
-删除文件/目录
-
-**查询参数:**
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| path | string | 文件/目录路径 |
-
-**成功响应 (200):**
-```json
-{
-  "message": "文件已删除"
-}
-```
-
----
+删除文件/目录。**查询参数:** `path`
 
 ### PUT /api/files/move
 
-移动/重命名文件
-
-**请求体:**
-```json
-{
-  "oldPath": "/old.txt",
-  "newPath": "/new.txt"
-}
-```
-
----
+移动/重命名。**请求体:** `{"oldPath": "/old.txt", "newPath": "/new.txt"}`
 
 ### POST /api/files/mkdir
 
-创建目录
-
-**请求体:**
-```json
-{
-  "path": "/new-folder"
-}
-```
+创建目录。**请求体:** `{"path": "/new-folder"}`
 
 ---
 
@@ -520,15 +330,8 @@ X-Confirm-Action: true
 
 ### GET /api/skills
 
-获取技能市场列表
+获取技能市场列表。**查询参数:** `category`, `search`
 
-**查询参数:**
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| category | string | 分类过滤 |
-| search | string | 搜索关键词 |
-
-**成功响应 (200):**
 ```json
 [
   {
@@ -550,13 +353,10 @@ X-Confirm-Action: true
 ]
 ```
 
----
-
 ### GET /api/skills/categories
 
-获取技能分类
+获取技能分类。
 
-**成功响应 (200):**
 ```json
 [
   {
@@ -569,86 +369,25 @@ X-Confirm-Action: true
 ]
 ```
 
----
-
 ### GET /api/skills/installed
 
-获取已安装技能
-
-**成功响应 (200):**
-```json
-[
-  {
-    "id": "weather",
-    "name": "Weather",
-    "nameZh": "天气查询",
-    "description": "Get real-time weather",
-    "version": "1.0.0",
-    "installed": true,
-    "enabled": true
-  }
-]
-```
-
----
+获取已安装技能。
 
 ### POST /api/skills/install/:skillId
 
-安装技能
-
-**路径参数:**
-- `skillId` - 技能 ID
-
-**权限:** 需要管理员权限
-
-**成功响应 (200):**
-```json
-{
-  "message": "技能安装成功"
-}
-```
-
----
+安装技能。**权限:** 管理员
 
 ### DELETE /api/skills/:skillId
 
-卸载技能
-
-**权限:** 需要管理员权限
-
-**成功响应 (200):**
-```json
-{
-  "message": "技能已卸载"
-}
-```
-
----
+卸载技能。**权限:** 管理员
 
 ### PUT /api/skills/:skillId/toggle
 
-启用/禁用技能
-
-**请求体:**
-```json
-{
-  "enabled": false
-}
-```
-
----
+启用/禁用技能。**请求体:** `{"enabled": false}`
 
 ### PUT /api/skills/:skillId/config
 
-配置技能
-
-**请求体:**
-```json
-{
-  "apiKey": "your-api-key",
-  "timeout": 30
-}
-```
+配置技能。**请求体:** `{"apiKey": "your-api-key", "timeout": 30}`
 
 ---
 
@@ -656,9 +395,8 @@ X-Confirm-Action: true
 
 ### GET /api/agents
 
-获取 Agent 列表
+获取 Agent 列表。
 
-**成功响应 (200):**
 ```json
 [
   {
@@ -676,60 +414,28 @@ X-Confirm-Action: true
 ]
 ```
 
-**状态说明:**
-- `running` - 运行中
-- `stopped` - 已停止
-- `error` - 错误
-
----
+**状态说明:** `running`-运行中, `stopped`-已停止, `error`-错误
 
 ### GET /api/agents/:agentId
 
-获取单个 Agent 详情
-
----
+获取单个 Agent 详情。
 
 ### POST /api/agents/:agentId/start
 
-启动 Agent
-
-**权限:** 需要管理员权限
-
-**成功响应 (200):**
-```json
-{
-  "message": "Agent 启动中..."
-}
-```
-
----
+启动 Agent。**权限:** 管理员
 
 ### POST /api/agents/:agentId/stop
 
-停止 Agent
-
-**权限:** 需要管理员权限
-
----
+停止 Agent。**权限:** 管理员
 
 ### POST /api/agents/:agentId/restart
 
-重启 Agent
-
-**权限:** 需要管理员权限
-
----
+重启 Agent。**权限:** 管理员
 
 ### GET /api/agents/:agentId/logs
 
-获取 Agent 日志
+获取 Agent 日志。**查询参数:** `limit`(默认100)
 
-**查询参数:**
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| limit | number | 100 | 日志行数 |
-
-**成功响应 (200):**
 ```json
 {
   "logs": [
@@ -739,33 +445,18 @@ X-Confirm-Action: true
 }
 ```
 
----
-
 ### POST /api/agents/:agentId/chat
 
-与 Agent 对话
+与 Agent 对话。
 
-**请求体:**
-```json
-{
-  "message": "今天天气怎么样？"
-}
-```
+**请求体:** `{"message": "今天天气怎么样？"}`
 
-**成功响应 (200):**
-```json
-{
-  "response": "抱歉，我需要天气技能才能查询天气信息。"
-}
-```
-
----
+**成功响应:** `{"response": "...Agent回复..."}`
 
 ### GET /api/agents/:agentId/stats
 
-获取 Agent 统计信息
+获取 Agent 统计信息。
 
-**成功响应 (200):**
 ```json
 {
   "id": "agent-main",
@@ -781,13 +472,156 @@ X-Confirm-Action: true
 
 ---
 
+## 告警 API
+
+### GET /api/alerts/rules
+
+获取告警规则列表。
+
+```json
+[
+  {
+    "id": "rule_1710498600_a1b2c3",
+    "name": "CPU 过高告警",
+    "description": "CPU 使用率超过 80%",
+    "metric": "cpu",
+    "condition": "gt",
+    "threshold": 80,
+    "duration": 30,
+    "severity": "warning",
+    "enabled": true,
+    "channels": ["console", "log"],
+    "cooldown": 300,
+    "createdAt": "2024-01-20T10:00:00.000Z",
+    "updatedAt": "2024-01-20T10:00:00.000Z"
+  }
+]
+```
+
+**字段说明:**
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | string | 规则唯一标识 |
+| name | string | 规则名称 |
+| metric | string | 指标：cpu/memory/disk/agent_down/skill_error/log_error/rate_limit |
+| condition | string | 条件：gt(>)/lt(<)/eq(==)/contains/regex |
+| threshold | number/string | 阈值 |
+| duration | number | 持续秒数（防抖动） |
+| severity | string | 等级：info/warning/critical |
+| cooldown | number | 冷却秒数（防告警风暴） |
+
+**指标说明:**
+| 指标 | 说明 |
+|------|------|
+| cpu | CPU 利用率 (%) |
+| memory | 内存使用率 (%) |
+| disk | 磁盘使用率 (%) |
+| agent_down | Agent 离线 |
+| skill_error | 技能执行错误 |
+| log_error | 日志错误频率 |
+| rate_limit | 请求速率超限 |
+
+### POST /api/alerts/rules
+
+创建告警规则。
+
+```json
+{
+  "name": "CPU 过高告警",
+  "description": "CPU 使用率超过 80%",
+  "metric": "cpu",
+  "condition": "gt",
+  "threshold": 80,
+  "duration": 30,
+  "severity": "warning",
+  "cooldown": 300
+}
+```
+
+**成功响应 (201):** 返回创建的规则对象
+
+### PUT /api/alerts/rules/:id
+
+更新告警规则。可部分更新。
+
+### DELETE /api/alerts/rules/:id
+
+删除告警规则。`{"message": "Rule deleted"}`
+
+### POST /api/alerts/rules/:id/toggle
+
+启用/禁用规则。**请求体:** `{"enabled": false}`
+
+### GET /api/alerts/events
+
+获取告警事件列表。
+
+**查询参数:** `status`(active/acknowledged/resolved), `severity`(info/warning/critical), `ruleId`, `limit`(默认50), `offset`, `startDate`, `endDate`
+
+```json
+{
+  "events": [
+    {
+      "id": "alert_1710498600_x1y2z3",
+      "ruleId": "rule_1710498600_a1b2c3",
+      "ruleName": "CPU 过高告警",
+      "severity": "warning",
+      "status": "active",
+      "message": "[WARNING] CPU 过高告警: 85 > 80",
+      "details": { "metric": "cpu", "condition": "gt" },
+      "value": 85,
+      "threshold": 80,
+      "triggeredAt": "2024-01-20T16:00:00.000Z"
+    }
+  ],
+  "total": 15
+}
+```
+
+### POST /api/alerts/events/:id/acknowledge
+
+确认告警（标记为处理中）。
+
+```json
+{
+  "id": "alert_1710498600_x1y2z3",
+  "status": "acknowledged",
+  "acknowledgedAt": "2024-01-20T16:05:00.000Z",
+  "acknowledgedBy": "admin"
+}
+```
+
+### POST /api/alerts/events/:id/resolve
+
+解决告警。
+
+### POST /api/alerts/evaluate
+
+手动触发指标评估。**请求体:** `{"cpu": 85, "memory": 70, "disk": 50}`
+
+### GET /api/alerts/stats
+
+获取告警统计。
+
+```json
+{
+  "activeRules": 5,
+  "enabledRules": 3,
+  "activeAlerts": 2,
+  "acknowledgedAlerts": 3,
+  "criticalAlerts": 1,
+  "totalEvents": 20
+}
+```
+
+---
+
 ## 监控 API
 
 ### GET /api/monitor/system
 
-获取系统信息
+获取系统信息。
 
-**成功响应 (200):**
 ```json
 {
   "cpu": 25,
@@ -803,13 +637,10 @@ X-Confirm-Action: true
 }
 ```
 
----
-
 ### GET /api/monitor/processes
 
-获取进程列表
+获取进程列表。
 
-**成功响应 (200):**
 ```json
 [
   {
@@ -822,20 +653,12 @@ X-Confirm-Action: true
 ]
 ```
 
----
-
 ### GET /api/monitor/logs
 
-获取系统日志
+获取系统日志。
 
-**查询参数:**
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| level | string | 日志级别：debug/info/warn/error |
-| search | string | 搜索关键词 |
-| limit | number | 返回数量，默认 100 |
+**查询参数:** `level`(debug/info/warn/error), `search`, `limit`(默认100)
 
-**成功响应 (200):**
 ```json
 {
   "logs": [
@@ -845,13 +668,10 @@ X-Confirm-Action: true
 }
 ```
 
----
-
 ### POST /api/monitor/errors
 
-接收前端错误上报
+接收前端错误上报。
 
-**请求体:**
 ```json
 {
   "id": "error-1",
@@ -872,7 +692,7 @@ X-Confirm-Action: true
 const socket = io('http://localhost:3001')
 ```
 
-### 客户端事件
+### 客户端事件（订阅）
 
 | 事件 | 说明 |
 |------|------|
@@ -881,7 +701,7 @@ const socket = io('http://localhost:3001')
 | `subscribe:agents` | 订阅 Agent 状态 |
 | `unsubscribe:agents` | 取消订阅 Agent |
 
-### 服务端事件
+### 服务端事件（推送）
 
 | 事件 | 数据 | 说明 |
 |------|------|------|
@@ -890,6 +710,8 @@ const socket = io('http://localhost:3001')
 | `agent:started` | `{ agentId }` | Agent 已启动 |
 | `agent:stopped` | `{ agentId }` | Agent 已停止 |
 | `agent:error` | `{ agentId, error }` | Agent 错误 |
+| `alerts:new` | `AlertEvent` | 新告警事件 |
+| `alerts:metrics` | `{ cpu, memory, disk, timestamp }` | 指标推送 |
 
 ### 示例
 
@@ -907,13 +729,18 @@ socket.emit('subscribe:agents')
 socket.on('agent:status', (agent) => {
   console.log(`Agent ${agent.name}: ${agent.status}`)
 })
+
+// 订阅告警事件
+socket.on('alerts:new', (event) => {
+  console.log(`[${event.severity}] ${event.message}`)
+})
 ```
 
 ---
 
 ## 错误响应
 
-所有错误响应格式：
+所有错误使用统一格式：
 
 ```json
 {
@@ -972,7 +799,6 @@ Authorization: Bearer <token>
 
 ### GET /api/health
 
-**响应:**
 ```json
 {
   "status": "ok",
