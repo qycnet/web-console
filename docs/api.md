@@ -14,19 +14,17 @@
 - [错误响应](#错误响应)
 - [认证说明](#认证说明)
 
----
-
 ## 认证 API
 
 ### POST /api/auth/login
 
-用户登录
+用户登录（使用严格速率限制：每小时最多 10 次）
 
 **请求体：**
 ```json
 {
   "username": "admin",
-  "password": "admin123"
+  "password": "your-password"
 }
 ```
 
@@ -34,23 +32,31 @@
 ```json
 {
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "needsPasswordChange": true,
   "user": {
     "id": "user-1",
     "username": "admin",
-    "email": "admin@example.com",
-    "role": "admin",
-    "status": "active",
-    "createdAt": "2024-01-20T10:00:00.000Z",
-    "loginCount": 5
+    "role": "admin"
   }
 }
 ```
 
+**响应字段：**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| token | string | JWT Token，有效期 7 天 |
+| needsPasswordChange | boolean | 是否需要强制修改密码（管理员首次登录为 true） |
+| user | object | 用户基本信息 |
+
 **错误响应：**
 - `400` - 用户名和密码必填
 - `401` - 用户名或密码错误
+- `429` - 请求过于频繁（速率限制）
 
-**说明：** 本地访问（localhost/127.0.0.1）自动返回管理员 Token
+> ⚠️ 管理员首次登录时 `needsPasswordChange` 为 `true`，客户端应引导用户修改密码。
+>
+> 🔐 所有后续 API 请求需在 Header 中携带 Token：`Authorization: Bearer <token>`
 
 ---
 
@@ -796,6 +802,21 @@
 
 ## WebSocket 事件
 
+### 连接认证
+
+WebSocket 连接时需要在 `handshake.auth.token` 或 `handshake.query.token` 中携带 JWT Token：
+
+```js
+// 客户端连接示例
+const socket = io('ws://localhost:3001', {
+  auth: { token: 'your-jwt-token' }
+})
+```
+
+未认证的连接将被拒绝（401）。
+
+### 订阅事件
+
 ### 连接
 
 ```javascript
@@ -875,18 +896,24 @@ socket.on('alerts:new', (event) => {
 
 ### JWT Token
 
-除本地访问外，所有 API 请求需要在 Header 中携带 Token：
+所有 API 请求需要在 Header 中携带 Token：
 
 ```
 Authorization: Bearer <token>
 ```
 
-### 本地免认证
+### WebSocket 认证
 
-以下地址的请求自动跳过认证：
-- `127.0.0.1`
-- `::1`
-- `::ffff:127.0.0.1`
+WebSocket 连接需要在 handshake 中携带 Token：
+
+```javascript
+// 客户端示例
+const socket = io('ws://localhost:3001', {
+  auth: { token: 'your-jwt-token' }
+})
+```
+
+未认证的连接将被拒绝。
 
 ### 角色权限
 
@@ -896,10 +923,14 @@ Authorization: Bearer <token>
 | user | 查看 + 部分操作 |
 | viewer | 仅查看 |
 
+### 强制修改密码
+
+管理员首次使用默认密码登录时，API 返回 `needsPasswordChange: true`，客户端应引导用户修改密码。
+
 ### 速率限制
 
-- 普通 API: 100 次 / 15 分钟
-- 敏感操作: 10 次 / 小时
+- 普通 API: 每个 IP 每 15 分钟最多 100 次
+- 登录 API: 每个 IP 每小时最多 10 次（防暴力破解）
 
 ---
 
