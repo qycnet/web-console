@@ -196,21 +196,7 @@ pm2 save
 pm2 startup
 ```
 
-### Docker
-
-```bash
-# 构建镜像
-docker build -t openclaw-console .
-
-# 运行容器
-docker run -d \
-  -p 3001:3001 \
-  -v ~/.openclaw:/root/.openclaw \
-  -e JWT_SECRET=your-secret-key \
-  openclaw-console
-```
-
-### Nginx 反向代理
+### Nginx 反向代理（可选）
 
 ```nginx
 server {
