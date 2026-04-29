@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import bcrypt from 'bcrypt'
 import { v4 as uuidv4 } from 'uuid'
+import crypto from 'crypto'
 import { logger } from '../utils/logger.js'
 
 export interface User {
@@ -92,12 +93,14 @@ class UserService {
   private async createDefaultAdmin(): Promise<void> {
     const adminExists = this.db.prepare('SELECT id FROM users WHERE username = ?').get('admin')
     if (!adminExists) {
-      const hashedPassword = await bcrypt.hash('admin123', 10)
+      const adminPassword = process.env.ADMIN_PASSWORD || crypto.randomBytes(4).toString('hex')
+      const hashedPassword = await bcrypt.hash(adminPassword, 10)
       this.db.prepare(`
         INSERT INTO users (id, username, password, role, status)
         VALUES (?, ?, ?, ?, ?)
       `).run(uuidv4(), 'admin', hashedPassword, 'admin', 'active')
-      logger.info('Default admin account created')
+      logger.info(`Default admin account created (username: admin, password: ${adminPassword})`)
+      console.log(`\n⚠️  [DEFAULT ADMIN] username: admin, password: ${adminPassword}\n`)
     }
   }
 

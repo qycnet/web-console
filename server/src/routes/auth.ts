@@ -3,32 +3,17 @@ import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
 import { db } from '../services/database.js'
 import { logger } from '../utils/logger.js'
+import { strictRateLimiter } from '../middleware/auth.js'
 
 const router = Router()
-const JWT_SECRET = process.env.JWT_SECRET || 'openclaw-secret-key'
-
-// 检查是否为本地访问
-function isLocalRequest(req: Request): boolean {
-  const ip = req.ip || req.connection.remoteAddress || ''
-  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1'
+const JWT_SECRET = process.env.JWT_SECRET
+if (!JWT_SECRET) {
+  throw new Error('FATAL: JWT_SECRET environment variable is required')
 }
 
-// 登录
-router.post('/login', async (req: Request, res: Response) => {
+// 登录（使用严格速率限制）
+router.post('/login', strictRateLimiter, async (req: Request, res: Response) => {
   try {
-    // 本地访问免认证
-    if (isLocalRequest(req)) {
-      const token = jwt.sign(
-        { userId: 'local', role: 'admin' },
-        JWT_SECRET,
-        { expiresIn: '7d' }
-      )
-      return res.json({
-        token,
-        user: { id: 'local', username: 'local', role: 'admin' }
-      })
-    }
-
     const { username, password } = req.body
 
     if (!username || !password) {

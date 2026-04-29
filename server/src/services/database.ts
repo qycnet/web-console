@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import path from 'path'
 import fs from 'fs-extra'
 import bcrypt from 'bcrypt'
+import crypto from 'crypto'
 
 const OPENCLAW_DIR = process.env.OPENCLAW_DIR || path.join(process.env.HOME || '', '.openclaw')
 const DB_PATH = path.join(OPENCLAW_DIR, 'web-console.db')
@@ -27,14 +28,16 @@ db.exec(`
   );
 `)
 
-// 初始化默认管理员账户
+// 初始化默认管理员账户（通过 ADMIN_PASSWORD 环境变量设置，否则随机生成并打印）
 const adminExists = db.prepare('SELECT id FROM users WHERE username = ?').get('admin')
 if (!adminExists) {
-  const hashedPassword = bcrypt.hashSync('admin123', 10)
+  const adminPassword = process.env.ADMIN_PASSWORD || crypto.randomBytes(4).toString('hex')
+  const hashedPassword = bcrypt.hashSync(adminPassword, 10)
   db.prepare(`
     INSERT INTO users (id, username, password, role)
     VALUES (?, ?, ?, ?)
   `).run('user-1', 'admin', hashedPassword, 'admin')
+  console.log('\n⚠️  [DEFAULT ADMIN] username: admin  password: ' + adminPassword + '\n')
 }
 
 export const database = {

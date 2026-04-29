@@ -7,6 +7,13 @@ import { logger } from '../utils/logger.js'
 
 const router = Router()
 
+const ALLOWED_EXTENSIONS = ['.txt', '.md', '.json', '.yaml', '.yml', '.log', '.env', '.toml', '.ini', '.cfg']
+
+function validateFileType(filename: string): boolean {
+  const ext = path.extname(filename).toLowerCase()
+  return ALLOWED_EXTENSIONS.includes(ext)
+}
+
 const OPENCLAW_DIR = process.env.OPENCLAW_DIR || path.join(process.env.HOME || '', '.openclaw')
 
 // 配置文件上传
@@ -83,6 +90,9 @@ router.post('/upload', upload.single('file'), async (req, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: '没有上传文件' })
+    }
+    if (!validateFileType(req.file.originalname)) {
+      return res.status(400).json({ error: `不支持的文件类型，允许的类型: ${ALLOWED_EXTENSIONS.join(', ')}` })
     }
     const targetPath = safePath(req.body.path || '/')
     await fs.ensureDir(targetPath)
