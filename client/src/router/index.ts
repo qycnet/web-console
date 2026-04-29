@@ -48,6 +48,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Agent 管理', icon: 'robot' }
       },
       {
+        path: 'users',
+        name: 'Users',
+        component: () => import('@/views/Users.vue'),
+        meta: { title: '用户管理', icon: 'people', roles: ['admin'] }
+      },
+      {
         path: 'monitor',
         name: 'Monitor',
         component: () => import('@/views/Monitor.vue'),

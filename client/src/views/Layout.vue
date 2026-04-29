@@ -86,6 +86,7 @@ import {
   RocketOutline,
   DesktopOutline,
   DocumentTextOutline,
+  PeopleOutline,
   PersonOutline,
   MoonOutline,
   SunnyOutline,
@@ -102,7 +103,7 @@ const userStore = useUserStore()
 const collapsed = ref(false)
 const currentRoute = computed(() => route)
 
-const menuOptions = [
+const baseMenuOptions = [
   {
     label: '仪表盘',
     key: 'dashboard',
@@ -129,6 +130,12 @@ const menuOptions = [
     icon: () => h(NIcon, null, { default: () => h(RocketOutline) })
   },
   {
+    label: '用户管理',
+    key: 'users',
+    icon: () => h(NIcon, null, { default: () => h(PeopleOutline) }),
+    show: computed(() => userStore.isAdmin)
+  },
+  {
     label: '系统监控',
     key: 'monitor',
     icon: () => h(NIcon, null, { default: () => h(DesktopOutline) })
@@ -139,6 +146,15 @@ const menuOptions = [
     icon: () => h(NIcon, null, { default: () => h(DocumentTextOutline) })
   }
 ]
+
+const menuOptions = computed(() => {
+  return baseMenuOptions.filter(item => {
+    if ('show' in item) {
+      return item.show.value
+    }
+    return true
+  })
+})
 
 const currentKey = computed(() => route.name as string)
 
