@@ -13,6 +13,7 @@
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx --fix"
   },
   "dependencies": {
+    "@vicons/ionicons5": "^0.13.0",
     "@vueuse/core": "^10.7.2",
     "axios": "^1.6.5",
     "dayjs": "^1.11.10",

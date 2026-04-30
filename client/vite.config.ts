@@ -50,6 +50,7 @@ export default defineConfig({
   build: {
     outDir: '../server/public',
     emptyOutDir: true,
+    chunkSizeWarningLimit: 2000,
     rollupOptions: {
       output: {
         manualChunks: {
