@@ -381,7 +381,7 @@ async function handleCreateFolder() {
   }
 }
 
-function handleSelect(keys: string[]) {
+function handleSelect(_keys: (string | number)[]) {
   // 多选处理
 }
 </script>

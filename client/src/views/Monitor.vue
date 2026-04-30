@@ -43,13 +43,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, h, onMounted, onUnmounted } from 'vue'
 import {
   NGrid,
   NGi,
   NCard,
   NDataTable,
-  NButton,
   NProgress,
   type DataTableColumns
 } from 'naive-ui'

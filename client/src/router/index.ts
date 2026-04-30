@@ -75,7 +75,7 @@ const router = createRouter({
 })
 
 // 路由守卫
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, _from, next) => {
   const token = localStorage.getItem('token')
   const isLocalhost = window.location.hostname === 'localhost' ||
                       window.location.hostname === '127.0.0.1'

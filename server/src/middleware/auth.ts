@@ -2,11 +2,9 @@ import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 import rateLimit from 'express-rate-limit'
 import { logger } from '../utils/logger.js'
+import { getJwtSecret } from '../utils/jwt-secret.js'
 
-const JWT_SECRET = process.env.JWT_SECRET
-if (!JWT_SECRET) {
-  throw new Error('FATAL: JWT_SECRET environment variable is required')
-}
+const JWT_SECRET = getJwtSecret()
 
 // 扩展 Request 类型
 declare global {
@@ -59,9 +57,30 @@ export function requireRole(...roles: string[]) {
 /**
  * 检查是否为本地请求（仅信任直接连接 IP，不信任 X-Forwarded-For 防止 SSRF）
  */
-function isLocalRequest(req: Request): boolean {
-  const ip = req.ip || req.connection.remoteAddress || ''
+export function isLocalRequest(req: Request): boolean {
+  const ip = req.ip || req.socket.remoteAddress || ''
   return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1'
+}
+
+/**
+ * IP 白名单中间件
+ */
+export function ipWhitelist(whitelist: string[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    // 本地访问始终允许
+    if (isLocalRequest(req)) {
+      return next()
+    }
+
+    const ip = req.ip || req.connection.remoteAddress || ''
+
+    if (whitelist.length > 0 && !whitelist.includes(ip)) {
+      logger.warn(`Access denied for IP: ${ip}`)
+      return res.status(403).json({ error: '访问被拒绝' })
+    }
+
+    next()
+  }
 }
 
 /**

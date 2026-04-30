@@ -103,46 +103,54 @@ const userStore = useUserStore()
 const collapsed = ref(false)
 const currentRoute = computed(() => route)
 
-const baseMenuOptions = [
+const baseMenuOptions: any[] = [
   {
     label: '仪表盘',
     key: 'dashboard',
+    type: 'default' as const,
     icon: () => h(NIcon, null, { default: () => h(DashboardOutline) })
   },
   {
     label: '配置管理',
     key: 'config',
+    type: 'default' as const,
     icon: () => h(NIcon, null, { default: () => h(SettingsOutline) })
   },
   {
     label: '文件管理',
     key: 'files',
+    type: 'default' as const,
     icon: () => h(NIcon, null, { default: () => h(FolderOutline) })
   },
   {
     label: '技能中心',
     key: 'skills',
+    type: 'default' as const,
     icon: () => h(NIcon, null, { default: () => h(AppsOutline) })
   },
   {
     label: 'Agent 管理',
     key: 'agents',
+    type: 'default' as const,
     icon: () => h(NIcon, null, { default: () => h(RocketOutline) })
   },
   {
     label: '用户管理',
     key: 'users',
+    type: 'default' as const,
     icon: () => h(NIcon, null, { default: () => h(PeopleOutline) }),
     show: computed(() => userStore.isAdmin)
   },
   {
     label: '系统监控',
     key: 'monitor',
+    type: 'default' as const,
     icon: () => h(NIcon, null, { default: () => h(DesktopOutline) })
   },
   {
     label: '日志管理',
     key: 'logs',
+    type: 'default' as const,
     icon: () => h(NIcon, null, { default: () => h(DocumentTextOutline) })
   }
 ]
@@ -150,7 +158,7 @@ const baseMenuOptions = [
 const menuOptions = computed(() => {
   return baseMenuOptions.filter(item => {
     if ('show' in item) {
-      return item.show.value
+      return (item as any).show.value
     }
     return true
   })

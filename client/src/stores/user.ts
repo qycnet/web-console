@@ -5,8 +5,8 @@ import { api } from '@/api'
 export interface User {
   id: string
   username: string
-  role: 'admin' | 'user'
-  createdAt: string
+  role: string
+  createdAt?: string
 }
 
 export const useUserStore = defineStore('user', () => {
@@ -19,7 +19,7 @@ export const useUserStore = defineStore('user', () => {
   async function login(username: string, password: string) {
     const res = await api.auth.login(username, password)
     token.value = res.token
-    user.value = res.user
+    user.value = { id: res.user.id, username: res.user.username, role: res.user.role }
     localStorage.setItem('token', res.token)
     return res
   }
@@ -35,7 +35,7 @@ export const useUserStore = defineStore('user', () => {
     if (!token.value) return
     try {
       const res = await api.auth.me()
-      user.value = res
+      user.value = { id: res.id, username: res.username, role: res.role }
     } catch {
       logout()
     }

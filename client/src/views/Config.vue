@@ -100,7 +100,6 @@ const message = useMessage()
 const themeStore = useThemeStore()
 const activeTab = ref('form')
 const jsonConfig = ref('')
-const editorRef = ref()
 
 const config = ref({
   appName: 'OpenClaw',

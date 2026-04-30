@@ -106,14 +106,17 @@ router.post('/events/:id/resolve', (req: Request, res: Response) => {
 })
 
 // POST /api/alerts/evaluate - Manually trigger metric evaluation
-router.post('/evaluate', (req: Request, res: Response) => {
+router.post('/evaluate', async (req: Request, res: Response) => {
   const { cpu, memory, disk } = req.body
   evaluateMetrics(cpu ?? 0, memory ?? 0, disk ?? 0)
   // Also emit to WebSocket
-  const { getIO } = require('../index')
-  const io = getIO()
-  if (io) {
-    io.emit('alerts:metrics', { cpu, memory, disk, timestamp: new Date().toISOString() })
+  try {
+    const { io } = await import('../index.js')
+    if (io) {
+      io.emit('alerts:metrics', { cpu, memory, disk, timestamp: new Date().toISOString() })
+    }
+  } catch {
+    // io not available, skip WebSocket emit
   }
   res.json({ message: 'Metrics evaluated' })
 })

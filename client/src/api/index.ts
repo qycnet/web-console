@@ -1,10 +1,28 @@
 import axios from 'axios'
-import type { AxiosInstance } from 'axios'
+import type { AxiosInstance, AxiosRequestConfig } from 'axios'
 
-const instance: AxiosInstance = axios.create({
+/**
+ * Custom AxiosInstance type where all HTTP methods return Promise<T> directly
+ * (instead of Promise<AxiosResponse<T>>), because the response interceptor
+ * strips `.data` from every response.
+ */
+interface TypedAxiosInstance extends AxiosInstance {
+  get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
+  post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+  put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+  delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
+  head<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
+  options<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
+  patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+  postForm<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+  putForm<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+  patchForm<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+}
+
+const instance = axios.create({
   baseURL: '/api',
   timeout: 30000
-})
+}) as TypedAxiosInstance
 
 // 请求拦截器
 instance.interceptors.request.use(
@@ -18,7 +36,7 @@ instance.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
-// 响应拦截器
+// 响应拦截器 - 直接返回 response.data
 instance.interceptors.response.use(
   (response) => response.data,
   (error) => {
@@ -33,9 +51,9 @@ instance.interceptors.response.use(
 export const api = {
   auth: {
     login: (username: string, password: string) =>
-      instance.post('/auth/login', { username, password }),
+      instance.post<{ token: string; user: { id: string; username: string; role: string } }>('/auth/login', { username, password }),
     logout: () => instance.post('/auth/logout'),
-    me: () => instance.get('/auth/me')
+    me: () => instance.get<{ id: string; username: string; role: string }>('/auth/me')
   },
 
   config: {
@@ -48,13 +66,13 @@ export const api = {
   },
 
   files: {
-    list: (path: string) => instance.get('/files', { params: { path } }),
-    read: (path: string) => instance.get('/files/read', { params: { path } }),
+    list: (path: string) => instance.get<FileItem[]>('/files', { params: { path } }),
+    read: (path: string) => instance.get<string>('/files/read', { params: { path } }),
     write: (path: string, content: string) => instance.put('/files/write', { path, content }),
     upload: (formData: FormData) => instance.post('/files/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     }),
-    download: (path: string) => instance.get('/files/download', {
+    download: (path: string) => instance.get<Blob>('/files/download', {
       params: { path },
       responseType: 'blob'
     }),
@@ -83,8 +101,17 @@ export const api = {
     system: () => instance.get('/monitor/system'),
     processes: () => instance.get('/monitor/processes'),
     logs: (params: { level?: string; search?: string; limit?: number }) =>
-      instance.get('/monitor/logs', { params })
+      instance.get<{ logs: string[]; total: number }>('/monitor/logs', { params })
   }
 }
 
 export default api
+
+// Re-export common types used in views
+export interface FileItem {
+  name: string
+  path: string
+  type: 'file' | 'directory'
+  size: number
+  modified: string
+}

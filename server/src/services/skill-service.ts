@@ -251,7 +251,7 @@ class SkillService {
       // 尝试从腾讯云技能站 API 获取
       const response = await fetch('https://api.clawhub.ai/skills')
       if (response.ok) {
-        const data = await response.json()
+        const data = (await response.json()) as any
         for (const skill of data.skills || []) {
           this.skillCache.set(skill.id, {
             ...skill,

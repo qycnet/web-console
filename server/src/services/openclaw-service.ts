@@ -259,7 +259,7 @@ class OpenClawService extends EventEmitter {
         body: JSON.stringify({ message })
       })
 
-      const data = await response.json()
+      const data = (await response.json()) as { response?: string }
       return data.response || ''
     } catch (error) {
       logger.error(`Failed to send message to agent ${agentId}:`, error)

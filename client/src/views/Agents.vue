@@ -255,7 +255,7 @@ async function handleRestart(agent: Agent) {
   }
 }
 
-function handleDelete(agent: Agent) {
+function handleDelete(_agent: Agent) {
   message.info('删除功能开发中...')
 }
 

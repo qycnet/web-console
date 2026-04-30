@@ -1,14 +1,19 @@
 import { Router, Request, Response } from 'express'
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
-import { db } from '../services/database.js'
+import { database as db } from '../services/database.js'
 import { logger } from '../utils/logger.js'
 import { strictRateLimiter } from '../middleware/auth.js'
 
+import { getJwtSecret } from '../utils/jwt-secret.js'
+
 const router = Router()
-const JWT_SECRET = process.env.JWT_SECRET
-if (!JWT_SECRET) {
-  throw new Error('FATAL: JWT_SECRET environment variable is required')
+const JWT_SECRET = getJwtSecret()
+
+// 检查是否为本地访问
+function isLocalRequest(req: Request): boolean {
+  const ip = req.ip || req.socket.remoteAddress || ''
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1'
 }
 
 // 登录（使用严格速率限制）

@@ -40,7 +40,7 @@
         </n-space>
       </template>
 
-      <div class="log-container" ref="logContainerRef">
+      <div class="log-container">
         <div class="log-controls">
           <n-space>
             <n-button size="small" @click="loadHistoricalLogs">
@@ -99,14 +99,13 @@ import { useWebSocket } from '@/composables/useWebSocket'
 const message = useMessage()
 const dialog = useDialog()
 
-const logLevel = ref<string | null>(null)
+const logLevel = ref<string>('')
 const searchQuery = ref('')
 const historicalLogs = ref<string[]>([])
 const currentPage = ref(1)
 const totalPages = ref(1)
 const autoScroll = ref(true)
 const realtimeEnabled = ref(true)
-const logContainerRef = ref<HTMLElement>()
 const logContentRef = ref<HTMLElement>()
 
 const {
@@ -120,11 +119,11 @@ const {
 } = useWebSocket()
 
 const levelOptions = [
-  { label: '全部', value: null },
-  { label: 'DEBUG', value: 'debug' },
-  { label: 'INFO', value: 'info' },
-  { label: 'WARN', value: 'warn' },
-  { label: 'ERROR', value: 'error' }
+  { label: '全部', value: '' as const },
+  { label: 'DEBUG', value: 'debug' as const },
+  { label: 'INFO', value: 'info' as const },
+  { label: 'WARN', value: 'warn' as const },
+  { label: 'ERROR', value: 'error' as const }
 ]
 
 const allLogs = computed(() => {
@@ -135,7 +134,7 @@ const filteredLogs = computed(() => {
   let logs = allLogs.value
 
   if (logLevel.value) {
-    logs = logs.filter(log => log.includes(`[${logLevel.value.toUpperCase()}]`))
+    logs = logs.filter(log => log.includes(`[${(logLevel.value as string).toUpperCase()}]`))
   }
 
   if (searchQuery.value) {

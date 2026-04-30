@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3'
+import Database, { Database as DatabaseType } from 'better-sqlite3'
 import path from 'path'
 import fs from 'fs-extra'
 import bcrypt from 'bcrypt'
@@ -10,7 +10,7 @@ const DB_PATH = path.join(OPENCLAW_DIR, 'web-console.db')
 // 确保数据库目录存在
 fs.ensureDirSync(OPENCLAW_DIR)
 
-const db = new Database(DB_PATH)
+const db: DatabaseType = new Database(DB_PATH)
 
 // 初始化数据库表
 db.exec(`

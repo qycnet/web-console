@@ -23,6 +23,23 @@ router.get('/', async (_, res: Response) => {
   }
 })
 
+// 备份配置（需在 /:key 之前注册，避免被通配路由吞掉）
+router.get('/backup', async (_, res: Response) => {
+  try {
+    const configExists = await fs.pathExists(CONFIG_FILE)
+    if (!configExists) {
+      return res.status(404).json({ error: '配置文件不存在' })
+    }
+    const config = await fs.readJson(CONFIG_FILE)
+    res.setHeader('Content-Type', 'application/json')
+    res.setHeader('Content-Disposition', `attachment; filename=config-backup-${Date.now()}.json`)
+    res.send(JSON.stringify(config, null, 2))
+  } catch (error) {
+    logger.error('Failed to backup config:', error)
+    res.status(500).json({ error: '备份配置失败' })
+  }
+})
+
 // 获取单个配置项
 router.get('/:key', async (req, res: Response) => {
   try {
@@ -71,23 +88,6 @@ router.post('/reload', async (_, res: Response) => {
   } catch (error) {
     logger.error('Failed to reload config:', error)
     res.status(500).json({ error: '重载配置失败' })
-  }
-})
-
-// 备份配置
-router.get('/backup', async (_, res: Response) => {
-  try {
-    const configExists = await fs.pathExists(CONFIG_FILE)
-    if (!configExists) {
-      return res.status(404).json({ error: '配置文件不存在' })
-    }
-    const config = await fs.readJson(CONFIG_FILE)
-    res.setHeader('Content-Type', 'application/json')
-    res.setHeader('Content-Disposition', `attachment; filename=config-backup-${Date.now()}.json`)
-    res.send(JSON.stringify(config, null, 2))
-  } catch (error) {
-    logger.error('Failed to backup config:', error)
-    res.status(500).json({ error: '备份配置失败' })
   }
 })
 

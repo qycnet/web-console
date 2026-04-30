@@ -1,4 +1,5 @@
 import crypto from 'crypto'
+import { getJwtSecret } from '../utils/jwt-secret'
 
 const ALGORITHM = 'aes-256-gcm'
 const IV_LENGTH = 16
@@ -8,7 +9,7 @@ let encryptionKey: Buffer | null = null
 
 function getKey(): Buffer {
   if (encryptionKey) return encryptionKey
-  const secret = process.env.JWT_SECRET || 'openclaw-secret-key'
+  const secret = getJwtSecret()
   // Derive a 256-bit key from JWT_SECRET using SHA-256
   encryptionKey = crypto.createHash('sha256').update(secret).digest()
   return encryptionKey

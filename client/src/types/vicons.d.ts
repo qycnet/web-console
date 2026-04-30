@@ -1,0 +1,31 @@
+declare module '@vicons/ionicons5' {
+  import { Component } from 'vue'
+  export const RocketOutline: Component
+  export const AppsOutline: Component
+  export const SpeedometerOutline: Component
+  export const HardwareChipOutline: Component
+  export const DashboardOutline: Component
+  export const SettingsOutline: Component
+  export const FolderOutline: Component
+  export const DesktopOutline: Component
+  export const DocumentTextOutline: Component
+  export const PeopleOutline: Component
+  export const PersonOutline: Component
+  export const MoonOutline: Component
+  export const SunnyOutline: Component
+  export const LogOutOutline: Component
+  export const SearchOutline: Component
+  export const DownloadOutline: Component
+  export const TrashOutline: Component
+  export const WifiOutline: Component
+  export const ArrowDownOutline: Component
+  export const CloudUploadOutline: Component
+  export const HomeOutline: Component
+  export const DocumentOutline: Component
+  export const CreateOutline: Component
+  export const AddOutline: Component
+  export const PlayOutline: Component
+  export const StopOutline: Component
+  export const RefreshOutline: Component
+  export const ChatbubbleOutline: Component
+}
