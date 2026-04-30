@@ -338,12 +338,41 @@ class SkillService {
 
         if (!skillId || localSkills.has(skillId) || this.skillCache.has(skillId)) continue
 
+        // 从 description 中提取 name 和 nameZh
+        let name = skillId
+        let nameZh = ''
+        let descriptionZh = ''
+        let cleanDesc = description
+
+        // 尝试从 description 中提取中文名
+        // 格式如: "生产级 Agent 记忆系统 — 6维坐标编码..."
+        const chinesePrefix = description.match(/^([\u4e00-\u9fff][\u4e00-\u9fff\s\w]{0,30})[\s—\-:：]/)
+        if (chinesePrefix) {
+          nameZh = chinesePrefix[1].trim()
+          name = nameZh
+          // 剩余部分作为英文描述
+          const rest = description.slice(chinesePrefix[0].length)
+          if (rest) cleanDesc = rest.trim()
+        } else if (/[\u4e00-\u9fff]/.test(description)) {
+          // description 包含中文但没有分隔符（如"中国大陆保险AI助手"）
+          const zhMatch = description.match(/^([\u4e00-\u9fff]+)/)
+          if (zhMatch) {
+            nameZh = zhMatch[1]
+            name = nameZh
+          }
+        }
+
+        // 兜底：通过 getChineseName 映射表
+        if (!nameZh) {
+          nameZh = this.getChineseName(path.join(this.openclawDir, 'workspace', 'skills', skillId), {})
+        }
+
         this.skillCache.set(skillId, {
           id: skillId,
-          name: skillId,
-          nameZh: '',
-          description,
-          descriptionZh: '',
+          name,
+          nameZh,
+          description: cleanDesc,
+          descriptionZh,
           author: 'market',
           version,
           category: 'utilities',
