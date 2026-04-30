@@ -55,7 +55,7 @@
               <n-input-number v-model:value="browserForm.remoteCdpTimeoutMs" :min="500" :step="100" />
             </n-form-item>
             <n-form-item label="允许私有网络">
-              <n-switch v-model:value="browserForm.ssrfPolicy?.allowPrivateNetwork" />
+              <n-switch v-model:value="browserForm.ssrfPolicy.allowPrivateNetwork" />
             </n-form-item>
           </n-form>
           <n-divider>Profile 配置</n-divider>
@@ -161,14 +161,8 @@ import {
   NSpace,
   NIcon,
   NTag,
-  NText,
-  NP,
-  NDescriptions,
-  NDescriptionsItem,
-  NDivider,
   NGrid,
   NGi,
-  NEmpty,
   NInput,
   NInputNumber,
   NModal,
@@ -177,7 +171,7 @@ import {
   NPopconfirm,
   useMessage
 } from 'naive-ui'
-import { RefreshOutline, DownloadOutline, CreateOutline, TrashOutline } from '@vicons/ionicons5'
+import { RefreshOutline, DownloadOutline, TrashOutline } from '@vicons/ionicons5'
 import { api } from '@/api'
 import { useThemeStore } from '@/stores/theme'
 import MonacoEditor from '@/components/MonacoEditor.vue'
@@ -367,19 +361,13 @@ const browserForm = reactive({
   headless: false,
   defaultProfile: 'openclaw',
   remoteCdpTimeoutMs: 1500,
-  ssrfPolicy: { allowPrivateNetwork: true } as Record<string, any>,
+  ssrfPolicy: { allowPrivateNetwork: true },
   profiles: {} as Record<string, { cdpPort: number; color: string }>
 })
 
 const newProfileName = ref('')
 const newProfileCdpPort = ref(18800)
 const newProfileColor = ref('#0066CC')
-
-function addProfile() {
-  newProfileName.value = 'work'
-  newProfileCdpPort.value = 18801
-  newProfileColor.value = '#0066CC'
-}
 
 function saveProfile() {
   const name = newProfileName.value.trim()
