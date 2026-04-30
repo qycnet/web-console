@@ -4,7 +4,6 @@ declare module '@vicons/ionicons5' {
   export const AppsOutline: Component
   export const SpeedometerOutline: Component
   export const HardwareChipOutline: Component
-  export const DashboardOutline: Component
   export const SettingsOutline: Component
   export const FolderOutline: Component
   export const DesktopOutline: Component

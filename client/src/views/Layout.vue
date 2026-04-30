@@ -79,7 +79,7 @@ import {
   NDropdown
 } from 'naive-ui'
 import {
-  DashboardOutline,
+  SpeedometerOutline,
   SettingsOutline,
   FolderOutline,
   AppsOutline,
@@ -108,7 +108,7 @@ const baseMenuOptions: any[] = [
     label: '仪表盘',
     key: 'dashboard',
     type: 'default' as const,
-    icon: () => h(NIcon, null, { default: () => h(DashboardOutline) })
+    icon: () => h(NIcon, null, { default: () => h(SpeedometerOutline) })
   },
   {
     label: '配置管理',
