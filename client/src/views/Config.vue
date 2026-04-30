@@ -63,11 +63,19 @@
             <n-gi v-for="(module, key) in configModules" :key="key">
               <n-card :title="module.label" size="small">
                 <template #header-extra>
-                  <n-tag size="small" :type="module.exists ? 'success' : 'default'">
-                    {{ module.exists ? `已配置` : '无' }}
-                  </n-tag>
+                  <n-space>
+                    <n-tag size="small" :type="module.exists ? 'success' : 'default'">
+                      {{ module.exists ? `已配置` : '无' }}
+                    </n-tag>
+                    <n-button size="tiny" quaternary @click="editModule(module.key)">
+                      <template #icon><n-icon :component="CreateOutline" /></template>
+                      编辑
+                    </n-button>
+                  </n-space>
                 </template>
-                <n-p v-if="module.summary">{{ module.summary }}</n-p>
+                <n-ellipsis :line-clamp="3" v-if="module.summary">
+                  <n-p>{{ module.summary }}</n-p>
+                </n-ellipsis>
                 <n-p v-else depth="3">暂无配置</n-p>
               </n-card>
             </n-gi>
@@ -96,9 +104,10 @@ import {
   NGrid,
   NGi,
   NBadge,
+  NEllipsis,
   useMessage
 } from 'naive-ui'
-import { RefreshOutline, DownloadOutline } from '@vicons/ionicons5'
+import { RefreshOutline, DownloadOutline, CreateOutline } from '@vicons/ionicons5'
 import { api } from '@/api'
 import { useThemeStore } from '@/stores/theme'
 import MonacoEditor from '@/components/MonacoEditor.vue'
@@ -227,6 +236,13 @@ async function handleBackup() {
 function handleReset() {
   jsonConfig.value = originalConfig.value
   message.success('已重置为上次保存的版本')
+}
+
+function editModule(moduleKey: string) {
+  // 切换到 JSON 编辑器 tab
+  activeTab.value = 'json'
+  // 在 JSON 中高亮对应模块（后续可扩展为光标定位）
+  message.info(`编辑模块: ${moduleKey}，请在 JSON 编辑器中修改`)
 }
 
 function handleFormatJson() {
