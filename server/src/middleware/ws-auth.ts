@@ -1,11 +1,9 @@
 import { Socket } from 'socket.io'
 import jwt from 'jsonwebtoken'
 import { logger } from '../utils/logger.js'
+import { getJwtSecret } from '../utils/jwt-secret.js'
 
-const JWT_SECRET = process.env.JWT_SECRET
-if (!JWT_SECRET) {
-  throw new Error('FATAL: JWT_SECRET environment variable is required')
-}
+const JWT_SECRET = getJwtSecret()
 
 /**
  * WebSocket JWT 认证中间件
