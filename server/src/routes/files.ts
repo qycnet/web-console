@@ -14,18 +14,21 @@ function validateFileType(filename: string): boolean {
   return ALLOWED_EXTENSIONS.includes(ext)
 }
 
-const OPENCLAW_DIR = process.env.OPENCLAW_DIR || path.join(process.env.HOME || '', '.openclaw')
+// 文件浏览器的根目录：用户 HOME 目录，允许访问 ~/openclaw.json 和 ~/.openclaw/ 等
+const FILE_ROOT = process.env.HOME || '/root'
 
-// 配置文件上传
+// 配置文件上传暂存目录
+const UPLOAD_TEMP_DIR = path.join(process.env.OPENCLAW_DIR || path.join(process.env.HOME || '', '.openclaw'), 'temp', 'uploads')
+
 const upload = multer({
-  dest: path.join(OPENCLAW_DIR, 'temp', 'uploads'),
+  dest: UPLOAD_TEMP_DIR,
   limits: { fileSize: 100 * 1024 * 1024 } // 100MB
 })
 
-// 安全检查：确保路径在 OPENCLAW_DIR 内
+// 安全检查：确保路径在 FILE_ROOT 内
 function safePath(requestPath: string): string {
-  const resolved = path.resolve(OPENCLAW_DIR, requestPath)
-  if (!resolved.startsWith(OPENCLAW_DIR)) {
+  const resolved = path.resolve(FILE_ROOT, requestPath.replace(/^\//, ''))
+  if (!resolved.startsWith(FILE_ROOT)) {
     throw new Error('非法路径')
   }
   return resolved
@@ -42,7 +45,7 @@ router.get('/', async (req, res: Response) => {
       const stat = await fs.stat(fullPath)
       return {
         name: item.name,
-        path: path.relative(OPENCLAW_DIR, fullPath),
+        path: path.relative(FILE_ROOT, fullPath),
         type: item.isDirectory() ? 'directory' : 'file',
         size: stat.size,
         modified: stat.mtime.toISOString()
