@@ -127,18 +127,36 @@ import {
 import { SearchOutline } from '@vicons/ionicons5'
 import { api } from '@/api'
 
+interface SkillConfigOption {
+  key: string
+  label: string
+  type: 'string' | 'number' | 'boolean' | 'select'
+  options?: { label: string; value: string }[]
+  required?: boolean
+  placeholder?: string
+}
+
 interface Skill {
   id: string
   name: string
+  nameZh?: string
   description: string
+  descriptionZh?: string
+  author: string
+  version: string
+  category: string
+  tags: string[]
+  rating: number
+  downloads: number
+  installed: boolean
   enabled: boolean
-  configOptions?: any[]
+  icon?: string
+  homepage?: string
+  repository?: string
+  configOptions?: SkillConfigOption[]
 }
 
-interface MarketSkill extends Skill {
-  rating: number
-  tags: string[]
-}
+interface MarketSkill extends Skill {}
 
 const message = useMessage()
 const dialog = useDialog()
