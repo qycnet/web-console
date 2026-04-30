@@ -19,6 +19,18 @@ export interface Skill {
   icon?: string
   homepage?: string
   repository?: string
+  /** 从 SKILL.md 提取的配置字段定义 */
+  configOptions?: SkillConfigOption[]
+}
+
+/** 技能配置字段定义 */
+export interface SkillConfigOption {
+  key: string
+  label: string
+  type: 'string' | 'number' | 'boolean' | 'select'
+  options?: { label: string; value: string }[]
+  required?: boolean
+  placeholder?: string
 }
 
 export interface SkillCategory {
@@ -29,9 +41,23 @@ export interface SkillCategory {
   count: number
 }
 
+/** 从 SKILL.md YAML frontmatter 中提取的信息 */
+interface SkillMeta {
+  name?: string
+  description?: string
+  nameZh?: string
+  descriptionZh?: string
+  category?: string
+  tags?: string[]
+  icon?: string
+  homepage?: string
+  config?: SkillConfigOption[]
+}
+
 class SkillService {
   private openclawDir: string
   private skillsDir: string
+  private coreSkillsDir: string
   private cacheDir: string
   private skillCache: Map<string, Skill> = new Map()
   private cacheExpiry: number = 3600000 // 1小时缓存
@@ -40,6 +66,7 @@ class SkillService {
   constructor() {
     this.openclawDir = process.env.OPENCLAW_DIR || path.join(process.env.HOME || '', '.openclaw')
     this.skillsDir = path.join(this.openclawDir, 'workspace', 'skills')
+    this.coreSkillsDir = path.join(this.openclawDir, '..', 'core_skills')
     this.cacheDir = path.join(this.openclawDir, 'cache', 'skills')
   }
 
@@ -49,27 +76,42 @@ class SkillService {
   async init(): Promise<void> {
     await fs.ensureDir(this.skillsDir)
     await fs.ensureDir(this.cacheDir)
-    await this.loadInstalledSkills()
   }
 
   /**
-   * 获取技能市场列表
+   * 获取技能市场列表 —— 本地已安装技能 + 远程市场
    */
   async getMarketSkills(category?: string, search?: string): Promise<Skill[]> {
     try {
-      // 检查缓存是否过期
-      if (Date.now() - this.lastCacheUpdate > this.cacheExpiry) {
-        await this.fetchSkillCache()
+      // 1. 优先扫描本地已安装技能作为市场数据源
+      const localSkills = await this.scanLocalSkills()
+      const localMap = new Map<string, Skill>()
+      for (const s of localSkills) {
+        localMap.set(s.id, s)
       }
 
-      let skills = Array.from(this.skillCache.values())
+      // 2. 尝试合并远程缓存数据（如果有）
+      if (Date.now() - this.lastCacheUpdate > this.cacheExpiry) {
+        await this.fetchRemoteCache(localMap)
+      }
+
+      // 3. 最终列表 = 本地 + 缓存中本地没有的
+      const allSkills = new Map(localMap)
+      for (const [id, skill] of this.skillCache) {
+        if (!allSkills.has(id)) {
+          skill.installed = false
+          allSkills.set(id, skill)
+        }
+      }
+
+      let skills = Array.from(allSkills.values())
 
       // 分类过滤
       if (category) {
         skills = skills.filter(s => s.category === category)
       }
 
-      // 搜索过滤
+      // 搜索过滤——同时覆盖本地和远程技能
       if (search) {
         const searchLower = search.toLowerCase()
         skills = skills.filter(s =>
@@ -81,17 +123,10 @@ class SkillService {
         )
       }
 
-      // 标记已安装状态
-      const installedIds = await this.getInstalledIds()
-      skills = skills.map(s => ({
-        ...s,
-        installed: installedIds.includes(s.id)
-      }))
-
       return skills.sort((a, b) => b.downloads - a.downloads)
     } catch (error) {
       logger.error('Failed to get market skills:', error)
-      return this.getMockMarketSkills()
+      return this.scanLocalSkills()
     }
   }
 
@@ -99,26 +134,45 @@ class SkillService {
    * 获取已安装技能列表
    */
   async getInstalledSkills(): Promise<Skill[]> {
+    return this.scanLocalSkills()
+  }
+
+  /**
+   * 扫描本地 + core_skills 目录获取已安装技能
+   */
+  private async scanLocalSkills(): Promise<Skill[]> {
+    const dirsToScan = [this.skillsDir]
+    // 同时扫描 core_skills（如果存在且不同）
     try {
-      const dirs = await fs.readdir(this.skillsDir, { withFileTypes: true })
-      const skills: Skill[] = []
-
-      for (const dir of dirs) {
-        if (!dir.isDirectory()) continue
-
-        const skillPath = path.join(this.skillsDir, dir.name)
-        const skill = await this.loadSkillInfo(skillPath)
-        if (skill) {
-          skill.installed = true
-          skills.push(skill)
-        }
+      if (await fs.pathExists(this.coreSkillsDir)) {
+        dirsToScan.push(this.coreSkillsDir)
       }
+    } catch { /* ignore */ }
 
-      return skills
-    } catch (error) {
-      logger.error('Failed to get installed skills:', error)
-      return []
+    const skills: Skill[] = []
+    const seen = new Set<string>()
+
+    for (const dir of dirsToScan) {
+      try {
+        const entries = await fs.readdir(dir, { withFileTypes: true })
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue
+          if (seen.has(entry.name)) continue
+          seen.add(entry.name)
+
+          const skillPath = path.join(dir, entry.name)
+          const skill = await this.loadSkillInfo(skillPath)
+          if (skill) {
+            skill.installed = true
+            skills.push(skill)
+          }
+        }
+      } catch {
+        // 目录不存在或无权访问
+      }
     }
+
+    return skills
   }
 
   /**
@@ -127,19 +181,11 @@ class SkillService {
   async installSkill(skillId: string): Promise<void> {
     try {
       logger.info(`Installing skill: ${skillId}`)
-
-      // 从缓存或远程获取技能信息
-      const skillInfo = this.skillCache.get(skillId)
-      if (!skillInfo) {
-        throw new Error(`Skill ${skillId} not found in cache`)
-      }
-
-      // 使用 openclaw CLI 安装
       const { spawn } = await import('child_process')
-      const child = spawn('openclaw', ['skill', 'install', skillId], {
-        cwd: this.openclawDir
+      const child = spawn('npx', ['clawhub', 'install', skillId], {
+        cwd: this.openclawDir,
+        stdio: 'ignore'
       })
-
       await new Promise((resolve, reject) => {
         child.on('exit', (code) => {
           if (code === 0) {
@@ -151,10 +197,6 @@ class SkillService {
         })
         child.on('error', reject)
       })
-
-      // 更新缓存
-      skillInfo.installed = true
-      this.skillCache.set(skillId, skillInfo)
     } catch (error) {
       logger.error(`Failed to install skill ${skillId}:`, error)
       throw error
@@ -167,18 +209,21 @@ class SkillService {
   async uninstallSkill(skillId: string): Promise<void> {
     try {
       logger.info(`Uninstalling skill: ${skillId}`)
+      const paths = [path.join(this.skillsDir, skillId)]
+      try {
+        if (await fs.pathExists(this.coreSkillsDir)) {
+          const corePath = path.join(this.coreSkillsDir, skillId)
+          if (await fs.pathExists(corePath)) {
+            paths.push(corePath)
+          }
+        }
+      } catch { /* ignore */ }
 
-      const skillPath = path.join(this.skillsDir, skillId)
-      if (await fs.pathExists(skillPath)) {
-        await fs.remove(skillPath)
-        logger.info(`Skill ${skillId} uninstalled successfully`)
-      }
-
-      // 更新缓存
-      const skillInfo = this.skillCache.get(skillId)
-      if (skillInfo) {
-        skillInfo.installed = false
-        this.skillCache.set(skillId, skillInfo)
+      for (const p of paths) {
+        if (await fs.pathExists(p)) {
+          await fs.remove(p)
+          logger.info(`Removed ${p}`)
+        }
       }
     } catch (error) {
       logger.error(`Failed to uninstall skill ${skillId}:`, error)
@@ -191,17 +236,17 @@ class SkillService {
    */
   async toggleSkill(skillId: string, enabled: boolean): Promise<void> {
     try {
-      const skillPath = path.join(this.skillsDir, skillId)
+      const skillPath = await this.findSkillPath(skillId)
+      if (!skillPath) {
+        throw new Error(`Skill ${skillId} not found`)
+      }
       const configPath = path.join(skillPath, 'config.json')
-
       let config: any = {}
       if (await fs.pathExists(configPath)) {
         config = await fs.readJson(configPath)
       }
-
       config.enabled = enabled
       await fs.writeJson(configPath, config, { spaces: 2 })
-
       logger.info(`Skill ${skillId} ${enabled ? 'enabled' : 'disabled'}`)
     } catch (error) {
       logger.error(`Failed to toggle skill ${skillId}:`, error)
@@ -214,12 +259,10 @@ class SkillService {
    */
   async configureSkill(skillId: string, config: any): Promise<void> {
     try {
-      const skillPath = path.join(this.skillsDir, skillId)
+      const skillPath = await this.findSkillPath(skillId) || path.join(this.skillsDir, skillId)
       const configPath = path.join(skillPath, 'config.json')
-
       await fs.ensureDir(skillPath)
       await fs.writeJson(configPath, config, { spaces: 2 })
-
       logger.info(`Skill ${skillId} configured`)
     } catch (error) {
       logger.error(`Failed to configure skill ${skillId}:`, error)
@@ -231,7 +274,13 @@ class SkillService {
    * 获取技能分类
    */
   async getCategories(): Promise<SkillCategory[]> {
-    return [
+    const skills = await this.scanLocalSkills()
+    const categoryCount: Record<string, number> = {}
+    for (const s of skills) {
+      categoryCount[s.category] = (categoryCount[s.category] || 0) + 1
+    }
+
+    const categories: SkillCategory[] = [
       { id: 'ai', name: 'AI & ML', nameZh: '人工智能', icon: '🤖', count: 0 },
       { id: 'productivity', name: 'Productivity', nameZh: '效率工具', icon: '⚡', count: 0 },
       { id: 'communication', name: 'Communication', nameZh: '通讯', icon: '💬', count: 0 },
@@ -241,72 +290,81 @@ class SkillService {
       { id: 'utilities', name: 'Utilities', nameZh: '实用工具', icon: '🔧', count: 0 },
       { id: 'integration', name: 'Integration', nameZh: '集成', icon: '🔗', count: 0 }
     ]
+
+    for (const c of categories) {
+      c.count = categoryCount[c.id] || 0
+    }
+
+    return categories
   }
 
   /**
    * 从远程获取技能缓存
    */
-  private async fetchSkillCache(): Promise<void> {
+  private async fetchRemoteCache(localSkills: Map<string, Skill>): Promise<void> {
     try {
-      // 尝试从腾讯云技能站 API 获取
       const response = await fetch('https://api.clawhub.ai/skills')
       if (response.ok) {
         const data = (await response.json()) as any
         for (const skill of data.skills || []) {
-          this.skillCache.set(skill.id, {
-            ...skill,
-            nameZh: skill.name_zh || await this.translateToChinese(skill.name),
-            descriptionZh: skill.description_zh || await this.translateToChinese(skill.description)
-          })
+          if (!localSkills.has(skill.id)) {
+            this.skillCache.set(skill.id, {
+              id: skill.id,
+              name: skill.name || skill.id,
+              nameZh: skill.name_zh || '',
+              description: skill.description || '',
+              descriptionZh: skill.description_zh || '',
+              author: skill.author || 'unknown',
+              version: skill.version || '1.0.0',
+              category: this.guessCategory(skill.tags || []),
+              tags: skill.tags || [],
+              rating: skill.rating || 0,
+              downloads: skill.downloads || 0,
+              installed: false,
+              enabled: true,
+              icon: skill.icon || '',
+              homepage: skill.homepage || skill.repository || '',
+            })
+          }
         }
         this.lastCacheUpdate = Date.now()
         logger.info('Skill cache updated from remote')
-        return
       }
     } catch (error) {
-      logger.warn('Failed to fetch skills from remote, using mock data')
-    }
-
-    // 使用模拟数据
-    this.loadMockCache()
-  }
-
-  /**
-   * AI 翻译为中文
-   */
-  private async translateToChinese(text: string): Promise<string> {
-    // TODO: 调用翻译 API
-    return text
-  }
-
-  /**
-   * 加载已安装技能
-   */
-  private async loadInstalledSkills(): Promise<void> {
-    try {
-      const skills = await this.getInstalledSkills()
-      for (const skill of skills) {
-        this.skillCache.set(skill.id, skill)
-      }
-    } catch (error) {
-      logger.error('Failed to load installed skills:', error)
+      logger.warn('Failed to fetch skills from remote')
     }
   }
 
   /**
-   * 获取已安装技能 ID 列表
+   * 根据标签猜测分类
    */
-  private async getInstalledIds(): Promise<string[]> {
-    try {
-      const dirs = await fs.readdir(this.skillsDir, { withFileTypes: true })
-      return dirs.filter(d => d.isDirectory()).map(d => d.name)
-    } catch {
-      return []
-    }
+  private guessCategory(tags: string[]): string {
+    const tag = tags.join(' ').toLowerCase()
+    if (/ai|ml|nlp|chat|gpt|llm/.test(tag)) return 'ai'
+    if (/productivity|todo|reminder|calendar/.test(tag)) return 'productivity'
+    if (/communication|chat|email|sms/.test(tag)) return 'communication'
+    if (/data|database|csv|excel/.test(tag)) return 'data'
+    if (/automation|workflow|cron/.test(tag)) return 'automation'
+    if (/game|fun|music/.test(tag)) return 'entertainment'
+    if (/integrat|webhook|api/.test(tag)) return 'integration'
+    return 'utilities'
   }
 
   /**
-   * 加载技能信息
+   * 查找技能路径（先在 skills 目录找，再在 core_skills 找）
+   */
+  private async findSkillPath(skillId: string): Promise<string | null> {
+    const skillsPath = path.join(this.skillsDir, skillId)
+    if (await fs.pathExists(skillsPath)) return skillsPath
+
+    const corePath = path.join(this.coreSkillsDir, skillId)
+    if (await fs.pathExists(corePath)) return corePath
+
+    return null
+  }
+
+  /**
+   * 加载技能信息 —— 从 SKILL.md 和 package.json 提取
    */
   private async loadSkillInfo(skillPath: string): Promise<Skill | null> {
     try {
@@ -318,164 +376,121 @@ class SkillService {
       let description = ''
       let version = '1.0.0'
       let enabled = true
+      let meta: SkillMeta = {}
+      let configOptions: SkillConfigOption[] = []
 
-      // 读取 SKILL.md
+      // 1. 从 SKILL.md 提取信息（含 YAML frontmatter）
       if (await fs.pathExists(skillMdPath)) {
         const content = await fs.readFile(skillMdPath, 'utf-8')
-        const titleMatch = content.match(/^#\s+(.+)$/m)
-        if (titleMatch) name = titleMatch[1]
-        const descMatch = content.match(/^>\s*(.+)$/m)
-        if (descMatch) description = descMatch[1]
+        meta = this.parseSkillMeta(content)
+        name = meta.name || name
+        description = meta.description || description
       }
 
-      // 读取 package.json
+      // 2. 从 package.json 补充信息
       if (await fs.pathExists(packagePath)) {
         const pkg = await fs.readJson(packagePath)
-        name = pkg.name || name
-        description = pkg.description || description
+        name = meta.name || pkg.name || name
+        description = meta.description || pkg.description || description
         version = pkg.version || version
       }
 
-      // 读取配置
+      // 3. 从 SKILL.md 的 config 字段提取配置选项
+      if (meta.config && meta.config.length > 0) {
+        configOptions = meta.config
+      } else {
+        // 兜底：尝试从 package.json 的 configSchema 或 inputs 读取
+        try {
+          const pkg = await fs.readJson(packagePath)
+          if (pkg.configSchema) {
+            configOptions = pkg.configSchema
+          } else if (pkg.inputs) {
+            configOptions = pkg.inputs
+          }
+        } catch { /* ignore */ }
+      }
+
+      // 4. 读取已保存的配置状态
       if (await fs.pathExists(configPath)) {
-        const config = await fs.readJson(configPath)
-        enabled = config.enabled !== false
+        const localConfig = await fs.readJson(configPath)
+        enabled = localConfig.enabled !== false
       }
 
       return {
         id: path.basename(skillPath),
         name,
+        nameZh: meta.nameZh || '',
         description,
+        descriptionZh: meta.descriptionZh || '',
         author: 'local',
         version,
-        category: 'utilities',
-        tags: [],
-        rating: 0,
+        category: meta.category || this.guessCategory(meta.tags || []),
+        tags: meta.tags || [],
+        rating: meta.config ? 4.0 : 3.0,
         downloads: 0,
         installed: true,
-        enabled
+        enabled,
+        icon: meta.icon || '📦',
+        homepage: meta.homepage || '',
+        configOptions,
       }
     } catch (error) {
-      logger.error('Failed to load skill info:', error)
+      logger.error(`Failed to load skill info: ${skillPath}`, error)
       return null
     }
   }
 
   /**
-   * 加载模拟缓存数据
+   * 解析 SKILL.md 的 YAML frontmatter（首行 --- 之间的内容）
+   * 以及 markdown 中的中文标题和描述
    */
-  private loadMockCache(): void {
-    const mockSkills: Skill[] = [
-      {
-        id: 'weather',
-        name: 'Weather',
-        nameZh: '天气查询',
-        description: 'Get real-time weather information for any location',
-        descriptionZh: '查询全球各地实时天气信息',
-        author: 'openclaw',
-        version: '1.0.0',
-        category: 'utilities',
-        tags: ['weather', 'forecast', 'temperature'],
-        rating: 4.5,
-        downloads: 1500,
-        installed: false,
-        enabled: true,
-        icon: '🌤️'
-      },
-      {
-        id: 'translator',
-        name: 'Translator',
-        nameZh: '翻译助手',
-        description: 'Multi-language translation service',
-        descriptionZh: '多语言实时翻译服务',
-        author: 'openclaw',
-        version: '1.2.0',
-        category: 'ai',
-        tags: ['translate', 'language', 'nlp'],
-        rating: 4.8,
-        downloads: 2300,
-        installed: false,
-        enabled: true,
-        icon: '🌐'
-      },
-      {
-        id: 'reminder',
-        name: 'Reminder',
-        nameZh: '提醒助手',
-        description: 'Smart reminder and todo management',
-        descriptionZh: '智能提醒和待办事项管理',
-        author: 'openclaw',
-        version: '1.1.0',
-        category: 'productivity',
-        tags: ['reminder', 'todo', 'schedule'],
-        rating: 4.3,
-        downloads: 1800,
-        installed: false,
-        enabled: true,
-        icon: '⏰'
-      },
-      {
-        id: 'news',
-        name: 'News',
-        nameZh: '新闻资讯',
-        description: 'Get latest news and trending topics',
-        descriptionZh: '获取最新新闻资讯和热点事件',
-        author: 'openclaw',
-        version: '1.0.0',
-        category: 'information',
-        tags: ['news', 'trending', 'headlines'],
-        rating: 4.2,
-        downloads: 1200,
-        installed: false,
-        enabled: true,
-        icon: '📰'
-      },
-      {
-        id: 'calendar',
-        name: 'Calendar',
-        nameZh: '日程管理',
-        description: 'Calendar and schedule management',
-        descriptionZh: '日历和日程安排管理',
-        author: 'openclaw',
-        version: '1.3.0',
-        category: 'productivity',
-        tags: ['calendar', 'schedule', 'events'],
-        rating: 4.6,
-        downloads: 2100,
-        installed: false,
-        enabled: true,
-        icon: '📅'
-      },
-      {
-        id: 'email',
-        name: 'Email',
-        nameZh: '邮件助手',
-        description: 'Email sending and management',
-        descriptionZh: '邮件发送和管理服务',
-        author: 'openclaw',
-        version: '1.0.0',
-        category: 'communication',
-        tags: ['email', 'smtp', 'mail'],
-        rating: 4.1,
-        downloads: 900,
-        installed: false,
-        enabled: true,
-        icon: '📧'
+  private parseSkillMeta(content: string): SkillMeta {
+    const meta: SkillMeta = {}
+
+    // 提取 YAML frontmatter
+    const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/)
+    if (frontmatterMatch) {
+      const yamlLines = frontmatterMatch[1].split('\n')
+      for (const line of yamlLines) {
+        const colonIdx = line.indexOf(':')
+        if (colonIdx === -1) continue
+        const key = line.substring(0, colonIdx).trim()
+        const val = line.substring(colonIdx + 1).trim().replace(/^"|"$/g, '')
+
+        if (key === 'name') meta.name = val
+        if (key === 'description') meta.description = val
+        if (key === 'name_zh' || key === 'nameZh') meta.nameZh = val
+        if (key === 'description_zh' || key === 'descriptionZh') meta.descriptionZh = val
+        if (key === 'homepage') meta.homepage = val
+        if (key === 'icon' || key === 'emoji') meta.icon = val
+        if (key === 'category') meta.category = val
+        if (key === 'tags') {
+          try {
+            meta.tags = JSON.parse(val)
+          } catch {
+            meta.tags = val.split(',').map(t => t.trim())
+          }
+        }
+        if (key === 'config' || key === 'inputs' || key === 'configSchema') {
+          try {
+            const parsed = JSON.parse(val)
+            meta.config = parsed
+          } catch {
+            // YAML 格式的 config 可能无法用简单解析
+          }
+        }
       }
-    ]
-
-    for (const skill of mockSkills) {
-      this.skillCache.set(skill.id, skill)
     }
-    this.lastCacheUpdate = Date.now()
-  }
 
-  /**
-   * 获取模拟市场数据
-   */
-  private getMockMarketSkills(): Skill[] {
-    this.loadMockCache()
-    return Array.from(this.skillCache.values())
+    // 如果没有 name_zh/descriptionZh，尝试从正文提取中文信息
+    if (!meta.nameZh) {
+      const zhTitleMatch = content.match(/^#\s+([\u4e00-\u9fff]+)/m)
+      if (zhTitleMatch) {
+        meta.nameZh = zhTitleMatch[1]
+      }
+    }
+
+    return meta
   }
 }
 

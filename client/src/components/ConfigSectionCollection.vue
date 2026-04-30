@@ -160,8 +160,8 @@ import {
   NModal,
   NEllipsis,
   NDropdown,
-  type DataTableColumns,
-  type SelectMixedOption
+  useMessage,
+  type DataTableColumns
 } from 'naive-ui'
 import { CreateOutline, TrashOutline } from '@vicons/ionicons5'
 
@@ -194,6 +194,8 @@ const emit = defineEmits<{
   (e: 'add-sub', parentKey: string, value: any): void
 }>()
 
+const message = useMessage()
+
 // 添加按钮下拉选项
 const addDropdownOptions = computed(() => {
   const options: any[] = []
@@ -216,7 +218,7 @@ const editFields = reactive<Record<string, any>>({})
 const editFieldTypes = ref<Record<string, 'string' | 'number' | 'switch' | 'select'>>({})
 const editFieldLabels = ref<Record<string, string>>({})
 const editFieldPlaceholders = ref<Record<string, string>>({})
-const editFieldOptions = ref<Record<string, SelectMixedOption[]>>({})
+const editFieldOptions = ref<Record<string, { label: string; value: string }[]>>({})
 
 // 子项弹窗
 const showSubDialog = ref(false)
@@ -278,7 +280,7 @@ function onEditItem(key: string) {
 function onSaveItem() {
   const newKey = editKey.value.trim()
   if (!newKey) {
-    window.$message?.error('名称不能为空')
+    message.error('名称不能为空')
     return
   }
 
