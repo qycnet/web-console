@@ -308,39 +308,86 @@ class SkillService {
   }
 
   /**
-   * 从远程获取技能缓存
+   * 从远程获取技能缓存 —— 使用 clawhub CLI 替代已失效的 HTTP API
    */
   private async fetchRemoteCache(localSkills: Map<string, Skill>): Promise<void> {
     try {
-      const response = await fetch('https://api.clawhub.ai/skills')
-      if (response.ok) {
-        const data = (await response.json()) as any
-        for (const skill of data.skills || []) {
-          if (!localSkills.has(skill.id)) {
-            this.skillCache.set(skill.id, {
-              id: skill.id,
-              name: skill.name || skill.id,
-              nameZh: skill.name_zh || '',
-              description: skill.description || '',
-              descriptionZh: skill.description_zh || '',
-              author: skill.author || 'unknown',
-              version: skill.version || '1.0.0',
-              category: this.guessCategory(skill.tags || []),
-              tags: skill.tags || [],
-              rating: skill.rating || 0,
-              downloads: skill.downloads || 0,
-              installed: false,
-              enabled: true,
-              icon: skill.icon || '',
-              homepage: skill.homepage || skill.repository || '',
-            })
-          }
+      const { execSync } = await import('child_process')
+      const output = execSync('npx clawhub explore --limit 80', {
+        cwd: this.openclawDir,
+        encoding: 'utf-8',
+        timeout: 15000,
+        maxBuffer: 1024 * 1024
+      })
+
+      const lines = output.split('\n').filter(Boolean)
+      // clawhub explore 输出格式：
+      // 技能名  描述  分类  标签
+      // 每行用空格分隔
+      for (const line of lines) {
+        const parts = line.trim().split(/\s{2,}/)
+        if (parts.length < 1) continue
+        const skillId = parts[0].trim()
+        if (!skillId || skillId.startsWith('─') || skillId.startsWith('名') || skillId.startsWith('━')) continue
+
+        if (!localSkills.has(skillId) && !this.skillCache.has(skillId)) {
+          const name = parts[1] || skillId
+          const desc = parts[2] || ''
+          this.skillCache.set(skillId, {
+            id: skillId,
+            name,
+            nameZh: '',
+            description: desc,
+            descriptionZh: '',
+            author: 'market',
+            version: '1.0.0',
+            category: 'utilities',
+            tags: (parts[3] || '').split(',').map(t => t.trim()).filter(Boolean),
+            rating: 3.0,
+            downloads: 0,
+            installed: false,
+            enabled: true,
+            configOptions: [],
+          })
         }
-        this.lastCacheUpdate = Date.now()
-        logger.info('Skill cache updated from remote')
       }
+
+      this.lastCacheUpdate = Date.now()
+      logger.info(`Skill cache updated from clawhub explore (${this.skillCache.size} market skills)`)
     } catch (error) {
-      logger.warn('Failed to fetch skills from remote')
+      logger.warn('Failed to fetch skills from clawhub: ' + (error as Error).message)
+      // 兜底：尝试 HTTP API
+      try {
+        const response = await fetch('https://api.clawhub.ai/skills')
+        if (response.ok) {
+          const data = (await response.json()) as any
+          for (const skill of data.skills || []) {
+            if (!localSkills.has(skill.id)) {
+              this.skillCache.set(skill.id, {
+                id: skill.id,
+                name: skill.name || skill.id,
+                nameZh: skill.name_zh || '',
+                description: skill.description || '',
+                descriptionZh: skill.description_zh || '',
+                author: skill.author || 'unknown',
+                version: skill.version || '1.0.0',
+                category: this.guessCategory(skill.tags || [], skill.name, skill.description),
+                tags: skill.tags || [],
+                rating: skill.rating || 0,
+                downloads: skill.downloads || 0,
+                installed: false,
+                enabled: true,
+                icon: skill.icon || '',
+                homepage: skill.homepage || skill.repository || '',
+              })
+            }
+          }
+          this.lastCacheUpdate = Date.now()
+          logger.info('Skill cache updated from HTTP API fallback')
+        }
+      } catch {
+        // 都失败就算了，至少本地技能可用
+      }
     }
   }
 
