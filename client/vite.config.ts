@@ -49,6 +49,14 @@ export default defineConfig({
   },
   build: {
     outDir: '../server/public',
-    emptyOutDir: true
+    emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'monaco-editor': ['monaco-editor'],
+          'vendor': ['vue', 'vue-router', 'pinia', 'naive-ui', 'axios', 'dayjs', 'echarts']
+        }
+      }
+    }
   }
 })
