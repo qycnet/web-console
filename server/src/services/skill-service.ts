@@ -313,43 +313,47 @@ class SkillService {
   private async fetchRemoteCache(localSkills: Map<string, Skill>): Promise<void> {
     try {
       const { execSync } = await import('child_process')
-      const output = execSync('npx clawhub explore --limit 80', {
+      const output = execSync('npx clawhub explore --limit 100', {
         cwd: this.openclawDir,
         encoding: 'utf-8',
-        timeout: 15000,
+        timeout: 20000,
         maxBuffer: 1024 * 1024
       })
 
       const lines = output.split('\n').filter(Boolean)
       // clawhub explore 输出格式：
-      // 技能名  描述  分类  标签
-      // 每行用空格分隔
-      for (const line of lines) {
-        const parts = line.trim().split(/\s{2,}/)
-        if (parts.length < 1) continue
-        const skillId = parts[0].trim()
-        if (!skillId || skillId.startsWith('─') || skillId.startsWith('名') || skillId.startsWith('━')) continue
+      // skill-id  v1.0.0  1m ago  描述文本（可能被截断）
+      // 使用正则解析
+      for (const rawLine of lines) {
+        const line = rawLine.trim()
+        if (!line || line.startsWith('─') || line.startsWith('━') || line.startsWith('Fetching')) continue
 
-        if (!localSkills.has(skillId) && !this.skillCache.has(skillId)) {
-          const name = parts[1] || skillId
-          const desc = parts[2] || ''
-          this.skillCache.set(skillId, {
-            id: skillId,
-            name,
-            nameZh: '',
-            description: desc,
-            descriptionZh: '',
-            author: 'market',
-            version: '1.0.0',
-            category: 'utilities',
-            tags: (parts[3] || '').split(',').map(t => t.trim()).filter(Boolean),
-            rating: 3.0,
-            downloads: 0,
-            installed: false,
-            enabled: true,
-            configOptions: [],
-          })
-        }
+        // 匹配: skill-id  vX.Y.Z  timeago  description
+        const match = line.match(/^(\S+)\s+(v?\d+\.\d+\.\d+)\s+(\S[\s\S]*?)\s{2,}([\s\S]*)$/)
+        if (!match) continue
+
+        const skillId = match[1]
+        const version = match[2] || '1.0.0'
+        const description = (match[4] || '').trim().replace(/…$|\.{3}$/, '')
+
+        if (!skillId || localSkills.has(skillId) || this.skillCache.has(skillId)) continue
+
+        this.skillCache.set(skillId, {
+          id: skillId,
+          name: skillId,
+          nameZh: '',
+          description,
+          descriptionZh: '',
+          author: 'market',
+          version,
+          category: 'utilities',
+          tags: [],
+          rating: 3.0,
+          downloads: 0,
+          installed: false,
+          enabled: true,
+          configOptions: [],
+        })
       }
 
       this.lastCacheUpdate = Date.now()
