@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express'
-import { alertManager, alertEmitter, evaluateMetrics, AlertRule } from '../services/alert-service'
+import { alertManager, alertEmitter, evaluateMetrics, AlertRule } from '../services/alert-service.js'
 
 const router = Router()
 

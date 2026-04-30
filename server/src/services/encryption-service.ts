@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import { getJwtSecret } from '../utils/jwt-secret'
+import { getJwtSecret } from '../utils/jwt-secret.js'
 
 const ALGORITHM = 'aes-256-gcm'
 const IV_LENGTH = 16
