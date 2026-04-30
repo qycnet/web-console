@@ -76,8 +76,9 @@ class OpenClawService extends EventEmitter {
   private async isValidOpenClawDir(dir: string): Promise<boolean> {
     try {
       const configExists = await fs.pathExists(path.join(dir, 'config.json'))
+      const openclawConfigExists = await fs.pathExists(path.join(dir, 'openclaw.json'))
       const packageExists = await fs.pathExists(path.join(dir, 'package.json'))
-      return configExists || packageExists
+      return configExists || openclawConfigExists || packageExists
     } catch {
       return false
     }
