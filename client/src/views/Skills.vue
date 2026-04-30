@@ -4,13 +4,16 @@
       <n-tab-pane name="installed" tab="已安装">
         <n-grid :cols="3" :x-gap="16" :y-gap="16">
           <n-gi v-for="skill in installedSkills" :key="skill.id">
-            <n-card :title="skill.name" hoverable>
+            <n-card :title="skill.nameZh || skill.name" hoverable>
               <template #header-extra>
-                <n-tag :type="skill.enabled ? 'success' : 'default'">
-                  {{ skill.enabled ? '已启用' : '已禁用' }}
-                </n-tag>
+                <n-space>
+                  <n-tag v-if="skill.nameZh" size="small" type="info">{{ skill.name }}</n-tag>
+                  <n-tag :type="skill.enabled ? 'success' : 'default'">
+                    {{ skill.enabled ? '已启用' : '已禁用' }}
+                  </n-tag>
+                </n-space>
               </template>
-              <p class="skill-desc">{{ skill.description }}</p>
+              <p class="skill-desc">{{ skill.descriptionZh || skill.description }}</p>
               <template #footer>
                 <n-space>
                   <n-button size="small" @click="handleConfigure(skill)">
@@ -37,16 +40,19 @@
                 <n-icon :component="SearchOutline" />
               </template>
             </n-input>
-            <n-button type="primary">搜索</n-button>
+            <n-button type="primary" @click="handleSearch">搜索</n-button>
           </n-input-group>
 
           <n-grid :cols="3" :x-gap="16" :y-gap="16">
             <n-gi v-for="skill in marketSkills" :key="skill.id">
-              <n-card :title="skill.name" hoverable>
+              <n-card :title="skill.nameZh || skill.name" hoverable>
                 <template #header-extra>
-                  <n-rate :value="skill.rating" readonly size="small" />
+                  <n-space>
+                    <n-tag v-if="skill.nameZh" size="small" type="info">{{ skill.name }}</n-tag>
+                    <n-rate :value="skill.rating" readonly size="small" />
+                  </n-space>
                 </template>
-                <p class="skill-desc">{{ skill.description }}</p>
+                <p class="skill-desc">{{ skill.descriptionZh || skill.description }}</p>
                 <n-space style="margin-top: 8px;">
                   <n-tag v-for="tag in skill.tags" :key="tag" size="small">
                     {{ tag }}
@@ -158,12 +164,16 @@ async function loadInstalled() {
   }
 }
 
-async function loadMarket() {
+async function loadMarket(search?: string) {
   try {
-    marketSkills.value = await api.skills.list()
+    marketSkills.value = await api.skills.list(search)
   } catch (err) {
     console.error('Failed to load market skills:', err)
   }
+}
+
+function handleSearch() {
+  loadMarket(searchQuery.value || undefined)
 }
 
 function isInstalled(skillId: string) {

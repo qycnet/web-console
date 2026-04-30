@@ -82,7 +82,7 @@ export const api = {
   },
 
   skills: {
-    list: () => instance.get('/skills'),
+    list: (search?: string) => instance.get('/skills', { params: { search } }),
     installed: () => instance.get('/skills/installed'),
     install: (skillId: string) => instance.post(`/skills/install/${skillId}`),
     uninstall: (skillId: string) => instance.delete(`/skills/${skillId}`),
