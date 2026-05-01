@@ -2,16 +2,16 @@
   <div class="skills-page">
     <n-tabs v-model:value="activeTab" type="line">
       <n-tab-pane name="installed" tab="已安装">
-        <n-grid :cols="3" :x-gap="16" :y-gap="16">
+        <n-grid cols="1 s:2 m:3" :x-gap="16" :y-gap="16">
           <n-gi v-for="skill in installedSkills" :key="skill.id">
-            <n-card :title="skill.nameZh || skill.name" hoverable>
-              <template #header-extra>
-                <n-space>
-                  <n-tag v-if="skill.nameZh" size="small" type="info">{{ skill.name }}</n-tag>
-                  <n-tag :type="skill.enabled ? 'success' : 'default'">
+            <n-card hoverable>
+              <template #header>
+                <div class="skill-title-row">
+                  <span class="skill-title skill-title-ellipsis">{{ skill.nameZh || skill.name }}</span>
+                  <n-tag v-if="skill.source" :type="skill.enabled ? 'success' : 'default'" size="tiny">
                     {{ skill.enabled ? '已启用' : '已禁用' }}
                   </n-tag>
-                </n-space>
+                </div>
               </template>
               <p class="skill-desc">{{ skill.descriptionZh || skill.description }}</p>
               <template #footer>
@@ -34,8 +34,9 @@
 
       <n-tab-pane name="market" tab="技能市场">
         <n-space vertical size="large">
+          <!-- 搜索栏 -->
           <n-input-group>
-            <n-input v-model:value="searchQuery" placeholder="搜索技能..." clearable>
+            <n-input v-model:value="searchQuery" placeholder="搜索技能..." clearable @input="handleInput">
               <template #prefix>
                 <n-icon :component="SearchOutline" />
               </template>
@@ -43,9 +44,33 @@
             <n-button type="primary" @click="handleSearch">搜索</n-button>
           </n-input-group>
 
-          <n-grid :cols="3" :x-gap="16" :y-gap="16">
-            <n-gi v-for="skill in marketSkills" :key="skill.id">
-              <n-card :title="skill.nameZh || skill.name" hoverable>
+          <!-- 分类筛选 -->
+          <n-tabs v-if="categories.length > 0" v-model:value="activeCategory" type="segment" @update:value="handleCategoryChange">
+            <n-tab name="" key="all">全部</n-tab>
+            <n-tab v-for="cat in categories" :key="cat.id" :name="cat.id">
+              {{ cat.icon }} {{ cat.nameZh }} ({{ cat.count }})
+            </n-tab>
+          </n-tabs>
+
+          <!-- 技能网格 -->
+          <n-grid cols="1 s:2 m:3" :x-gap="16" :y-gap="16">
+            <n-gi v-for="skill in filteredMarketSkills" :key="skill.id">
+              <n-card hoverable>
+                <!-- 标题行：带来源标签 -->
+                <template #header>
+                  <div class="skill-title-row">
+                    <span class="skill-title skill-title-ellipsis">{{ skill.nameZh || skill.name }}</span>
+                    <n-tag
+                      v-if="skill.source"
+                      :type="skill.source === 'community' ? 'warning' : 'info'"
+                      size="tiny"
+                      round
+                      style="flex-shrink: 0;"
+                    >
+                      {{ skill.source === 'community' ? '社区' : 'clawhub' }}
+                    </n-tag>
+                  </div>
+                </template>
                 <template #header-extra>
                   <n-space>
                     <n-tag v-if="skill.nameZh" size="small" type="info">{{ skill.name }}</n-tag>
@@ -58,6 +83,10 @@
                     {{ tag }}
                   </n-tag>
                 </n-space>
+                <p class="skill-stats" v-if="skill.downloads > 0 || skill.author">
+                  📥 {{ skill.downloads >= 1000 ? (skill.downloads / 1000).toFixed(1) + 'k' : skill.downloads }} 下载
+                  <span v-if="skill.author"> · 👤 {{ skill.author }}</span>
+                </p>
                 <template #footer>
                   <n-button
                     type="primary"
@@ -72,6 +101,13 @@
               </n-card>
             </n-gi>
           </n-grid>
+
+          <!-- 空状态 -->
+          <n-empty v-if="filteredMarketSkills.length === 0 && !isLoadingMarket" description="没有找到匹配的技能">
+            <template #extra>
+              <n-button size="small" @click="loadMarket">刷新</n-button>
+            </template>
+          </n-empty>
         </n-space>
       </n-tab-pane>
     </n-tabs>
@@ -101,10 +137,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import {
   NTabs,
   NTabPane,
+  NTab,
   NGrid,
   NGi,
   NCard,
@@ -121,6 +158,7 @@ import {
   NInputNumber,
   NSwitch,
   NSelect,
+  NEmpty,
   useMessage,
   useDialog
 } from 'naive-ui'
@@ -153,25 +191,45 @@ interface Skill {
   icon?: string
   homepage?: string
   repository?: string
+  source?: 'clawhub' | 'community'
   configOptions?: SkillConfigOption[]
 }
 
-interface MarketSkill extends Skill {}
+interface SkillCategory {
+  id: string
+  name: string
+  nameZh: string
+  icon: string
+  count: number
+}
 
 const message = useMessage()
 const dialog = useDialog()
 
 const activeTab = ref('installed')
 const searchQuery = ref('')
+const activeCategory = ref('')
 const installedSkills = ref<Skill[]>([])
-const marketSkills = ref<MarketSkill[]>([])
+const marketSkills = ref<Skill[]>([])
+const categories = ref<SkillCategory[]>([])
 const installing = ref<string | null>(null)
+const isLoadingMarket = ref(false)
 const showConfig = ref(false)
 const configuringSkill = ref<Skill | null>(null)
 const configForm = ref<Record<string, any>>({})
 
+// 根据分类过滤后的技能
+const filteredMarketSkills = computed(() => {
+  let skills = marketSkills.value
+  if (activeCategory.value) {
+    skills = skills.filter(s => s.category === activeCategory.value)
+  }
+  return skills
+})
+
 onMounted(async () => {
   await Promise.all([loadInstalled(), loadMarket()])
+  loadCategories()
 })
 
 async function loadInstalled() {
@@ -183,26 +241,52 @@ async function loadInstalled() {
 }
 
 async function loadMarket(search?: string) {
+  isLoadingMarket.value = true
   try {
     marketSkills.value = await api.skills.list(search)
+    // 加载分类信息
+    loadCategories()
   } catch (err) {
     console.error('Failed to load market skills:', err)
+  } finally {
+    isLoadingMarket.value = false
   }
+}
+
+async function loadCategories() {
+  try {
+    categories.value = await api.skills.categories()
+  } catch (err) {
+    console.error('Failed to load categories:', err)
+  }
+}
+
+// 输入时实时搜索（带防抖）
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+function handleInput() {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    loadMarket(searchQuery.value || undefined)
+  }, 300)
 }
 
 function handleSearch() {
   loadMarket(searchQuery.value || undefined)
 }
 
+function handleCategoryChange(value: string) {
+  activeCategory.value = value
+}
+
 function isInstalled(skillId: string) {
   return installedSkills.value.some(s => s.id === skillId)
 }
 
-async function handleInstall(skill: MarketSkill) {
+async function handleInstall(skill: Skill) {
   installing.value = skill.id
   try {
     await api.skills.install(skill.id)
-    message.success(`${skill.name} 安装成功`)
+    message.success(`${skill.nameZh || skill.name} 安装成功`)
     await loadInstalled()
   } catch (err) {
     message.error('安装失败')
@@ -230,7 +314,7 @@ async function handleSaveConfig() {
 
 async function handleToggle(skill: Skill) {
   try {
-    await api.skills.configure(skill.id, { enabled: !skill.enabled })
+    await api.skills.toggle(skill.id, !skill.enabled)
     skill.enabled = !skill.enabled
     message.success(skill.enabled ? '已启用' : '已禁用')
   } catch (err) {
@@ -241,7 +325,7 @@ async function handleToggle(skill: Skill) {
 function handleUninstall(skill: Skill) {
   dialog.warning({
     title: '确认卸载',
-    content: `确定要卸载 ${skill.name} 吗？`,
+    content: `确定要卸载 ${skill.nameZh || skill.name} 吗？`,
     positiveText: '卸载',
     negativeText: '取消',
     onPositiveClick: async () => {
@@ -267,5 +351,29 @@ function handleUninstall(skill: Skill) {
   font-size: 14px;
   line-height: 1.6;
   margin: 0;
+}
+
+.skill-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.skill-title {
+  font-weight: 500;
+  font-size: 15px;
+}
+
+.skill-title-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-stats {
+  color: var(--n-text-color-3);
+  font-size: 12px;
+  margin: 8px 0 0;
 }
 </style>

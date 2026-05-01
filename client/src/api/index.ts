@@ -84,9 +84,11 @@ export const api = {
   skills: {
     list: (search?: string) => instance.get('/skills', { params: { search } }),
     installed: () => instance.get('/skills/installed'),
+    categories: () => instance.get('/skills/categories'),
     install: (skillId: string) => instance.post(`/skills/install/${skillId}`),
     uninstall: (skillId: string) => instance.delete(`/skills/${skillId}`),
-    configure: (skillId: string, config: any) => instance.put(`/skills/${skillId}/config`, config)
+    configure: (skillId: string, config: any) => instance.put(`/skills/${skillId}/config`, config),
+    toggle: (skillId: string, enabled: boolean) => instance.put(`/skills/${skillId}/toggle`, { enabled })
   },
 
   agents: {
