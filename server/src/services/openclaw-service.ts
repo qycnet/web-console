@@ -250,18 +250,47 @@ class OpenClawService extends EventEmitter {
 
   /**
    * 向 Agent 发送消息
+   * 通过 openclaw agent CLI 与 Agent 通信
    */
   async sendMessage(agentId: string, message: string): Promise<string> {
     try {
-      // 通过 IPC 或 HTTP 与 Agent 通信
-      const response = await fetch(`http://localhost:3001/api/agents/${agentId}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message })
-      })
+      return new Promise((resolve) => {
+        const proc = spawn('openclaw', ['agent', '--agent', agentId, '--message', message, '--json'], {
+          cwd: this.openclawDir,
+          timeout: 60000,
+          stdio: ['pipe', 'pipe', 'pipe']
+        })
 
-      const data = (await response.json()) as { response?: string }
-      return data.response || ''
+        let stdout = ''
+        let stderr = ''
+
+        proc.stdout.on('data', (data: Buffer) => {
+          stdout += data.toString()
+        })
+
+        proc.stderr.on('data', (data: Buffer) => {
+          stderr += data.toString()
+        })
+
+        proc.on('close', (code: number | null) => {
+          if (code === 0 && stdout) {
+            try {
+              const result = JSON.parse(stdout)
+              resolve(result.response || result.reply || result.text || stdout)
+            } catch {
+              resolve(stdout.trim() || 'Agent 已收到消息，但没有返回文本回复。')
+            }
+          } else {
+            logger.warn(`openclaw agent exit code=${code}, stderr=${stderr}`)
+            resolve('Agent 当前不可用，请稍后重试。')
+          }
+        })
+
+        proc.on('error', (err: Error) => {
+          logger.error(`Failed to spawn openclaw agent:`, err)
+          resolve('抱歉，无法连接到 Agent。请确认 OpenClaw 运行中。')
+        })
+      })
     } catch (error) {
       logger.error(`Failed to send message to agent ${agentId}:`, error)
       return '抱歉，无法连接到 Agent。'

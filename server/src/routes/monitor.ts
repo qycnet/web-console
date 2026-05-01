@@ -161,6 +161,69 @@ router.get('/export', async (req, res: Response) => {
   }
 })
 
+/**
+ * GET /api/monitor/network
+ * 获取网络流量统计（读取 /proc/net/dev）
+ */
+router.get('/network', async (_req, res: Response) => {
+  try {
+    const fs = await import('fs')
+    const data = fs.readFileSync('/proc/net/dev', 'utf-8')
+    const lines = data.split('\n').filter(Boolean)
+
+    const interfaces: Array<{
+      name: string
+      rxBytes: number
+      rxPackets: number
+      rxErrors: number
+      rxDrop: number
+      txBytes: number
+      txPackets: number
+      txErrors: number
+      txDrop: number
+      speed?: string
+    }> = []
+
+    for (let i = 2; i < lines.length; i++) {
+      const line = lines[i].trim()
+      const parts = line.split(/\s+/)
+      if (parts.length < 10) continue
+
+      const name = parts[0].replace(':', '')
+      const entry = {
+        name,
+        rxBytes: parseInt(parts[1], 10) || 0,
+        rxPackets: parseInt(parts[2], 10) || 0,
+        rxErrors: parseInt(parts[3], 10) || 0,
+        rxDrop: parseInt(parts[4], 10) || 0,
+        txBytes: parseInt(parts[9], 10) || 0,
+        txPackets: parseInt(parts[10], 10) || 0,
+        txErrors: parseInt(parts[11], 10) || 0,
+        txDrop: parseInt(parts[12], 10) || 0
+      }
+      interfaces.push(entry)
+    }
+
+    // 尝试获取接口速率（仅 Linux 支持）
+    for (const iface of interfaces) {
+      try {
+        const speedPath = `/sys/class/net/${iface.name}/speed`
+        const speedData = fs.readFileSync(speedPath, 'utf-8').trim()
+        if (speedData && speedData !== '-1') {
+          iface.speed = `${speedData} Mbps`
+        }
+      } catch {
+        // 忽略，部分接口没有 speed 文件
+      }
+    }
+
+    res.json(interfaces)
+  } catch (error) {
+    logger.error('Failed to get network stats:', error)
+    res.status(500).json({ error: '获取网络流量信息失败' })
+  }
+})
+
 // 接收前端错误上报
 router.post('/errors', async (req, res: Response) => {
   try {

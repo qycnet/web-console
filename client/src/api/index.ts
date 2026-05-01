@@ -103,7 +103,8 @@ export const api = {
     system: () => instance.get('/monitor/system'),
     processes: () => instance.get('/monitor/processes'),
     logs: (params: { level?: string; search?: string; limit?: number }) =>
-      instance.get<{ logs: string[]; total: number }>('/monitor/logs', { params })
+      instance.get<{ logs: string[]; total: number }>('/monitor/logs', { params }),
+    network: () => instance.get('/monitor/network')
   }
 }
 

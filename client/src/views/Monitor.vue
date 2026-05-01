@@ -108,7 +108,16 @@ const processColumns: DataTableColumns<Process> = [
   { title: '状态', key: 'status', width: 100 }
 ]
 
+interface NetIface {
+  name: string
+  rxBytes: number
+  txBytes: number
+}
+
 let timer: number
+let prevNet: NetIface[] = []
+let netHistory: { time: string; rx: number; tx: number }[] = []
+let snapshotCount = 0
 
 onMounted(async () => {
   initCharts()
@@ -177,9 +186,10 @@ function initCharts() {
 
 async function loadData() {
   try {
-    const [sys, procs] = await Promise.all([
+    const [sys, procs, netIfaces] = await Promise.all([
       api.monitor.system(),
-      api.monitor.processes()
+      api.monitor.processes(),
+      api.monitor.network()
     ])
 
     cpuChart?.setOption({
@@ -194,10 +204,39 @@ async function loadData() {
       series: [{
         data: [
           { value: sys.diskUsed, name: '已用' },
-          { value: sys.diskTotal - sys.diskUsed, name: '可用' }
+          { value: Math.max(sys.diskTotal - sys.diskUsed, 0), name: '可用' }
         ]
       }]
     })
+
+    // 网络流量：取第一个非 lo 接口计算速率
+    const targetIface = (netIfaces as NetIface[]).find(i => i.name !== 'lo') || (netIfaces as NetIface[])[0]
+    if (targetIface && prevNet.length > 0) {
+      const prev = prevNet.find(p => p.name === targetIface.name)
+      if (prev) {
+        const rxDelta = Math.max(0, targetIface.rxBytes - prev.rxBytes)
+        const txDelta = Math.max(0, targetIface.txBytes - prev.txBytes)
+        // 转换为 KB/s（5秒间隔）
+        const rxKbps = Math.round(rxDelta / 1024 / 5 * 10) / 10
+        const txKbps = Math.round(txDelta / 1024 / 5 * 10) / 10
+
+        const now = new Date()
+        const label = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
+
+        netHistory.push({ time: label, rx: rxKbps, tx: txKbps })
+        if (netHistory.length > 30) netHistory.shift()
+
+        netChart?.setOption({
+          xAxis: { data: netHistory.map(h => h.time) },
+          series: [
+            { name: '入站 (KB/s)', type: 'line', smooth: true, data: netHistory.map(h => h.rx) },
+            { name: '出站 (KB/s)', type: 'line', smooth: true, data: netHistory.map(h => h.tx) }
+          ]
+        })
+      }
+    }
+    // 更新当前快照
+    prevNet = netIfaces as NetIface[]
 
     processes.value = procs
   } catch (err) {
