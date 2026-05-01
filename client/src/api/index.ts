@@ -117,6 +117,16 @@ export const api = {
     logs: (params: { level?: string; search?: string; limit?: number }) =>
       instance.get<{ logs: string[]; total: number }>('/monitor/logs', { params }),
     network: () => instance.get('/monitor/network')
+  },
+
+  devices: {
+    list: () => instance.get('/devices'),
+    get: (deviceId: string) => instance.get(`/devices/${deviceId}`),
+    revoke: (deviceId: string) => instance.delete(`/devices/${deviceId}`),
+    sessions: (activeOnly?: boolean) => instance.get('/devices/sessions', { params: { active: activeOnly } }),
+    endSession: (sessionId: string) => instance.post(`/devices/sessions/${sessionId}/end`),
+    userDevices: (userId: string) => instance.get(`/devices/user/${userId}`),
+    revokeUser: (userId: string) => instance.post(`/devices/user/${userId}/revoke`)
   }
 }
 

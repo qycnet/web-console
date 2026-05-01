@@ -90,7 +90,8 @@ import {
   PersonOutline,
   MoonOutline,
   SunnyOutline,
-  LogOutOutline
+  LogOutOutline,
+  PhonePortraitOutline
 } from '@vicons/ionicons5'
 import { useThemeStore } from '@/stores/theme'
 import { useUserStore } from '@/stores/user'
@@ -152,6 +153,12 @@ const baseMenuOptions: any[] = [
     key: 'logs',
     type: 'default' as const,
     icon: () => h(NIcon, null, { default: () => h(DocumentTextOutline) })
+  },
+  {
+    label: '设备管理',
+    key: 'devices',
+    type: 'default' as const,
+    icon: () => h(NIcon, null, { default: () => h(PhonePortraitOutline) })
   }
 ]
 

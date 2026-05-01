@@ -10,6 +10,7 @@ import { wsAuthMiddleware } from './middleware/ws-auth.js'
 import { openclawService } from './services/openclaw-service.js'
 import { skillService } from './services/skill-service.js'
 import { alertEmitter, evaluateMetrics } from './services/alert-service.js'
+import { deviceService } from './services/device-service.js'
 import authRoutes from './routes/auth.js'
 import configRoutes from './routes/config.js'
 import filesRoutes from './routes/files.js'
@@ -18,6 +19,7 @@ import agentsRoutes from './routes/agents.js'
 import usersRoutes from './routes/users.js'
 import monitorRoutes from './routes/monitor.js'
 import alertsRoutes from './routes/alerts.js'
+import devicesRoutes from './routes/devices.js'
 
 config()
 
@@ -81,6 +83,7 @@ app.use('/api/agents', agentsRoutes)
 app.use('/api/users', usersRoutes)
 app.use('/api/monitor', monitorRoutes)
 app.use('/api/alerts', alertsRoutes)
+app.use('/api/devices', devicesRoutes)
 
 // Health check
 app.get('/api/health', async (req, res) => {
@@ -205,6 +208,10 @@ async function init() {
     // Initialize skill service
     await skillService.init()
     logger.info('Skill service initialized')
+
+    // Initialize device service
+    await deviceService.init()
+    logger.info('Device service initialized')
 
     // Agent monitoring
     openclawService.monitorAgents()

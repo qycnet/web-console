@@ -64,6 +64,12 @@ const routes: RouteRecordRaw[] = [
         name: 'Logs',
         component: () => import('@/views/Logs.vue'),
         meta: { title: '日志管理', icon: 'document' }
+      },
+      {
+        path: 'devices',
+        name: 'Devices',
+        component: () => import('@/views/Devices.vue'),
+        meta: { title: '设备管理', icon: 'phone-portrait', roles: ['admin'] }
       }
     ]
   }
