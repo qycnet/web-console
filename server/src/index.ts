@@ -42,6 +42,21 @@ io.use(wsAuthMiddleware)
 
 const PORT = process.env.PORT || 3001
 
+// HTTPS 强制重定向（生产环境）
+if (process.env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    if (!req.secure && req.headers['x-forwarded-proto'] !== 'https') {
+      // 只对 GET/HEAD 做 301 重定向
+      if (req.method === 'GET' || req.method === 'HEAD') {
+        return res.redirect(301, `https://${req.hostname}${req.originalUrl}`)
+      }
+      // 其他方法返回 403
+      return res.status(403).json({ error: 'HTTPS is required' })
+    }
+    next()
+  })
+}
+
 // Middleware
 app.use(helmet({ contentSecurityPolicy: false }))
 app.use(cors({

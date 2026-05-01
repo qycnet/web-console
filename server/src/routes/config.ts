@@ -69,6 +69,61 @@ router.get('/backup', async (_, res: Response) => {
   }
 })
 
+// 列出所有配置备份
+router.get('/backups', async (_, res: Response) => {
+  try {
+    const openclawDir = process.env.OPENCLAW_DIR || path.join(process.env.HOME || '/root', '.openclaw')
+    const backupDir = path.join(openclawDir, 'backups')
+    await fs.ensureDir(backupDir)
+
+    const files = await fs.readdir(backupDir)
+    const backups = await Promise.all(
+      files
+        .filter(f => f.endsWith('.json'))
+        .sort()
+        .reverse()
+        .slice(0, 50)
+        .map(async (f) => {
+          const stat = await fs.stat(path.join(backupDir, f))
+          return {
+            id: f.replace('.json', ''),
+            filename: f,
+            size: stat.size,
+            createdAt: stat.birthtime.toISOString(),
+            modifiedAt: stat.mtime.toISOString()
+          }
+        })
+    )
+    res.json(backups)
+  } catch (error) {
+    logger.error('Failed to list config backups:', error)
+    res.status(500).json({ error: '获取备份列表失败' })
+  }
+})
+
+// 从备份恢复配置
+router.post('/restore/:backupId', async (req, res: Response) => {
+  try {
+    const { backupId } = req.params
+    const openclawDir = process.env.OPENCLAW_DIR || path.join(process.env.HOME || '/root', '.openclaw')
+    const backupFile = path.join(openclawDir, 'backups', `${backupId}.json`)
+
+    if (!await fs.pathExists(backupFile)) {
+      return res.status(404).json({ error: '备份文件不存在' })
+    }
+
+    const backupConfig = await fs.readJson(backupFile)
+    const configPath = await getConfigFilePath()
+    await fs.writeJson(configPath, backupConfig, { spaces: 2 })
+
+    logger.info(`Config restored from backup: ${backupId}`)
+    res.json({ message: '配置已恢复，请执行热重载使其生效' })
+  } catch (error) {
+    logger.error('Failed to restore config:', error)
+    res.status(500).json({ error: '恢复配置失败' })
+  }
+})
+
 // 获取单个配置项
 router.get('/:key', async (req, res: Response) => {
   try {
@@ -119,12 +174,18 @@ router.put('/:key', async (req, res: Response) => {
 // 热重载配置
 router.post('/reload', async (_, res: Response) => {
   try {
-    // TODO: 触发 OpenClaw 的配置重载
-    logger.info('Config reloaded')
+    // 尝试通过 openclawService 热重载
+    await openclawService.reloadConfig()
+    // 也触发 alertNotifier 重新加载通知配置
+    const configPath = await getConfigFilePath()
+    const { alertNotifier } = await import('../services/alert-service.js')
+    alertNotifier.loadConfig(configPath)
+    logger.info('Config reloaded successfully')
     res.json({ message: '配置已重载' })
   } catch (error) {
     logger.error('Failed to reload config:', error)
-    res.status(500).json({ error: '重载配置失败' })
+    // 即使 reload 失败，配置本身可能已更新
+    res.json({ message: '配置已保存，热重载可能失败，建议重启服务' })
   }
 })
 

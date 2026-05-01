@@ -1,6 +1,8 @@
-import { Router, Response } from 'express'
+import { Router, Response, Request } from 'express'
 import si from 'systeminformation'
 import os from 'os'
+import fs from 'fs-extra'
+import path from 'path'
 import { logger } from '../utils/logger.js'
 
 const router = Router()
@@ -26,12 +28,14 @@ router.get('/system', async (_, res: Response) => {
       memory: Math.round((mem.used / mem.total) * 100),
       diskUsed: disk[0]?.used || 0,
       diskTotal: disk[0]?.size || 0,
+      diskUsage: disk[0] ? Math.round(((disk[0].size - disk[0].available) / disk[0].size) * 100) : 0,
       version: '1.0.0',
       nodeVersion: process.version,
       uptime: `${days}天 ${hours}小时 ${minutes}分钟`,
       platform: `${osInfo.distro} ${osInfo.release}`,
       cpuInfo: cpu.brand,
-      totalMemory: Math.round(mem.total / 1024 / 1024 / 1024) + ' GB'
+      totalMemory: Math.round(mem.total / 1024 / 1024 / 1024) + ' GB',
+      usedMemory: Math.round(mem.used / 1024 / 1024 / 1024) + ' GB'
     })
   } catch (error) {
     logger.error('Failed to get system info:', error)
@@ -60,40 +64,100 @@ router.get('/processes', async (_, res: Response) => {
   }
 })
 
-// 获取日志
+// 获取真实日志
 router.get('/logs', async (req, res: Response) => {
   try {
     const { level, search, limit = 100 } = req.query
+    const maxLines = Math.min(Math.max(Number(limit) || 100, 10), 5000)
 
-    // 模拟日志数据
-    const logs = [
-      '[2024-01-20 10:00:00] [INFO] Server started on port 3001',
-      '[2024-01-20 10:00:01] [INFO] Database connected',
-      '[2024-01-20 10:00:02] [INFO] WebSocket server initialized',
-      '[2024-01-20 10:05:00] [INFO] User logged in: admin',
-      '[2024-01-20 10:10:00] [WARN] High CPU usage detected: 85%',
-      '[2024-01-20 10:15:00] [INFO] Config reloaded',
-      '[2024-01-20 10:20:00] [ERROR] Failed to connect to external API',
-      '[2024-01-20 10:25:00] [INFO] Retry successful',
-      '[2024-01-20 10:30:00] [DEBUG] Processing request: /api/skills',
-      '[2024-01-20 10:35:00] [INFO] Skill installed: weather'
-    ]
+    const logPaths = getLogPaths()
+    const allLogs: string[] = []
 
-    let filteredLogs = logs
-    if (level) {
-      filteredLogs = filteredLogs.filter(log => log.includes(`[${(level as string).toUpperCase()}]`))
+    for (const logPath of logPaths) {
+      try {
+        if (await fs.pathExists(logPath)) {
+          const content = await fs.readFile(logPath, 'utf-8')
+          const lines = content.split('\n').filter(Boolean)
+          allLogs.push(...lines.reverse())
+        }
+      } catch {
+        continue
+      }
     }
+
+    let filteredLogs = allLogs
+
+    if (level) {
+      const levelUpper = (level as string).toUpperCase()
+      filteredLogs = filteredLogs.filter(log => extractLogLevel(log) === levelUpper)
+    }
+
     if (search) {
-      filteredLogs = filteredLogs.filter(log => log.includes(search as string))
+      const searchStr = (search as string).toLowerCase()
+      filteredLogs = filteredLogs.filter(log => log.toLowerCase().includes(searchStr))
     }
 
     res.json({
-      logs: filteredLogs.slice(0, Number(limit)),
+      logs: filteredLogs.slice(0, maxLines),
       total: filteredLogs.length
     })
   } catch (error) {
     logger.error('Failed to get logs:', error)
     res.status(500).json({ error: '获取日志失败' })
+  }
+})
+
+/**
+ * 日志导出
+ */
+router.get('/export', async (req, res: Response) => {
+  try {
+    const { level, search, format = 'txt' } = req.query
+    const logPaths = getLogPaths()
+    const allLogs: string[] = []
+
+    for (const logPath of logPaths) {
+      try {
+        if (await fs.pathExists(logPath)) {
+          const content = await fs.readFile(logPath, 'utf-8')
+          allLogs.push(...content.split('\n').filter(Boolean).reverse())
+        }
+      } catch {
+        continue
+      }
+    }
+
+    let filteredLogs = allLogs
+    if (level) {
+      const lu = (level as string).toUpperCase()
+      filteredLogs = filteredLogs.filter(l => extractLogLevel(l) === lu)
+    }
+    if (search) {
+      const ss = (search as string).toLowerCase()
+      filteredLogs = filteredLogs.filter(l => l.toLowerCase().includes(ss))
+    }
+
+    const ts = new Date().toISOString().replace('T', ' ').substring(0, 19)
+    const fn = `logs-export-${Date.now()}`
+
+    if (format === 'json') {
+      const data = filteredLogs.slice(0, 5000).map(l => ({
+        timestamp: extractTimestamp(l),
+        level: extractLogLevel(l),
+        message: l
+      }))
+      res.setHeader('Content-Type', 'application/json')
+      res.setHeader('Content-Disposition', `attachment; filename=${fn}.json`)
+      res.json(data)
+    } else {
+      const header = `# SkillHub Log Export\n# Generated: ${ts}\n# Total: ${filteredLogs.length}\n${'='.repeat(60)}\n\n`
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+      res.setHeader('Content-Disposition', `attachment; filename=${fn}.txt`)
+      res.send(header + filteredLogs.slice(0, 5000).join('\n'))
+    }
+  } catch (error) {
+    logger.error('Failed to export logs:', error)
+    res.status(500).json({ error: '日志导出失败' })
   }
 })
 
@@ -107,5 +171,32 @@ router.post('/errors', async (req, res: Response) => {
     res.status(500).json({ error: 'Failed to record error' })
   }
 })
+
+/**
+ * 获取可能的日志文件路径
+ */
+function getLogPaths(): string[] {
+  const openclawDir = process.env.OPENCLAW_DIR || path.join(os.homedir(), '.openclaw')
+  const homeDir = os.homedir()
+  return [
+    path.join(openclawDir, 'logs', 'server.log'),
+    path.join(openclawDir, 'logs', 'app.log'),
+    path.join(openclawDir, 'logs', 'error.log'),
+    path.join(homeDir, '.pm2', 'logs', 'openclaw-out.log'),
+    path.join(homeDir, '.pm2', 'logs', 'openclaw-error.log'),
+    '/var/log/syslog',
+    '/var/log/messages'
+  ]
+}
+
+function extractLogLevel(log: string): string {
+  const m = log.match(/\[(INFO|DEBUG|WARN|ERROR|FATAL)\]/i)
+  return m ? m[1].toUpperCase() : 'INFO'
+}
+
+function extractTimestamp(log: string): string {
+  const m = log.match(/^\[([^\]]+)\]/)
+  return m ? m[1] : ''
+}
 
 export default router

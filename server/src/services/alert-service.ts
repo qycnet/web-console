@@ -3,6 +3,153 @@ import Database from 'better-sqlite3'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
+import { createTransport } from 'nodemailer'
+import { logger } from '../utils/logger.js'
+
+// --- 告警通知发送器 ---
+
+interface MailConfig {
+  host: string
+  port: number
+  secure: boolean
+  auth: { user: string; pass: string }
+  from: string
+  to: string
+}
+
+interface WebhookConfig {
+  url: string
+  headers?: Record<string, string>
+  template?: string
+}
+
+class AlertNotifier {
+  private mailConfig: MailConfig | null = null
+  private webhookConfigs: WebhookConfig[] = []
+
+  loadConfig(configPath?: string) {
+    try {
+      const configFile = configPath || path.join(
+        process.env.OPENCLAW_DIR || path.join(os.homedir(), '.openclaw'),
+        'config.json'
+      )
+      if (fs.existsSync(configFile)) {
+        const config = JSON.parse(fs.readFileSync(configFile, 'utf-8'))
+        if (config.alert?.mail) {
+          this.mailConfig = {
+            host: config.alert.mail.host || 'smtp.qq.com',
+            port: config.alert.mail.port || 465,
+            secure: config.alert.mail.secure !== false,
+            auth: { user: config.alert.mail.user, pass: config.alert.mail.pass },
+            from: config.alert.mail.from || config.alert.mail.user,
+            to: config.alert.mail.to
+          }
+        }
+        if (config.alert?.webhooks) {
+          this.webhookConfigs = config.alert.webhooks
+        }
+      }
+    } catch {
+      // 配置不存在或格式错误，跳过
+    }
+  }
+
+  async send(event: AlertEvent, rule: AlertRule): Promise<void> {
+    const promises: Promise<void>[] = []
+
+    for (const channel of rule.channels) {
+      switch (channel) {
+        case 'email':
+          if (this.mailConfig) {
+            promises.push(this.sendMail(event, rule))
+          }
+          break
+        case 'webhook':
+          for (const wh of this.webhookConfigs) {
+            promises.push(this.sendWebhook(event, rule, wh))
+          }
+          break
+        case 'log':
+          logger.warn(`[ALERT] ${event.message}`)
+          break
+        case 'console':
+          // 已通过 alertEmitter 推送
+          break
+      }
+    }
+
+    await Promise.allSettled(promises)
+  }
+
+  private async sendMail(event: AlertEvent, rule: AlertRule): Promise<void> {
+    if (!this.mailConfig) return
+    try {
+      const transporter = createTransport(this.mailConfig)
+      await transporter.sendMail({
+        from: this.mailConfig.from,
+        to: this.mailConfig.to,
+        subject: `[${event.severity.toUpperCase()}] 告警: ${rule.name}`,
+        html: `
+          <h2 style="color: ${this.severityColor(event.severity)}">${event.severity.toUpperCase()} 告警</h2>
+          <table style="border-collapse:collapse;width:100%;max-width:600px;">
+            <tr><td style="padding:8px;border:1px solid #ddd;"><b>规则</b></td><td style="padding:8px;border:1px solid #ddd;">${rule.name}</td></tr>
+            <tr><td style="padding:8px;border:1px solid #ddd;"><b>指标</b></td><td style="padding:8px;border:1px solid #ddd;">${rule.metric}</td></tr>
+            <tr><td style="padding:8px;border:1px solid #ddd;"><b>条件</b></td><td style="padding:8px;border:1px solid #ddd;">当前值 ${event.value} ${this.conditionLabel(rule.condition)} ${rule.threshold}</td></tr>
+            <tr><td style="padding:8px;border:1px solid #ddd;"><b>触发时间</b></td><td style="padding:8px;border:1px solid #ddd;">${event.triggeredAt}</td></tr>
+            <tr><td style="padding:8px;border:1px solid #ddd;"><b>消息</b></td><td style="padding:8px;border:1px solid #ddd;">${event.message}</td></tr>
+          </table>
+          ${rule.description ? `<p>${rule.description}</p>` : ''}`
+      })
+      logger.info(`Alert email sent for rule ${rule.id}`)
+    } catch (error) {
+      logger.error(`Failed to send alert email for rule ${rule.id}:`, error)
+    }
+  }
+
+  private async sendWebhook(event: AlertEvent, rule: AlertRule, wh: WebhookConfig): Promise<void> {
+    try {
+      const payload = {
+        event: 'alert', id: event.id, severity: event.severity,
+        ruleName: rule.name, metric: rule.metric,
+        value: event.value, threshold: event.threshold,
+        message: event.message, triggeredAt: event.triggeredAt
+      }
+      const response = await fetch(wh.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(wh.headers || {}) },
+        body: JSON.stringify(payload)
+      })
+      if (response.ok) {
+        logger.info(`Webhook sent for rule ${rule.id} to ${wh.url}`)
+      } else {
+        logger.warn(`Webhook failed for rule ${rule.id}: ${response.status}`)
+      }
+    } catch (error) {
+      logger.error(`Webhook error for rule ${rule.id}:`, error)
+    }
+  }
+
+  private severityColor(severity: string): string {
+    switch (severity) {
+      case 'critical': return '#e74c3c'
+      case 'warning': return '#f39c12'
+      default: return '#3498db'
+    }
+  }
+
+  private conditionLabel(condition: string): string {
+    switch (condition) {
+      case 'gt': return '>'
+      case 'lt': return '<'
+      case 'eq': return '='
+      case 'contains': return '包含'
+      case 'regex': return '匹配'
+      default: return condition
+    }
+  }
+}
+
+export const alertNotifier = new AlertNotifier()
 
 // Alert types
 export type AlertSeverity = 'info' | 'warning' | 'critical'
@@ -335,6 +482,11 @@ class AlertManager {
     }
 
     alertEmitter.emit('alert', event)
+
+    // 发送通知（邮件 / webhook）
+    alertNotifier.send(event, rule).catch(err => {
+      logger.error(`Failed to send notification for rule ${rule.id}:`, err)
+    })
   }
 
   private startMonitoring() {

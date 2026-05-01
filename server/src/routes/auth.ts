@@ -4,11 +4,30 @@ import bcrypt from 'bcrypt'
 import { database as db } from '../services/database.js'
 import { logger } from '../utils/logger.js'
 import { strictRateLimiter } from '../middleware/auth.js'
+import { v4 as uuidv4 } from 'uuid'
 
 import { getJwtSecret } from '../utils/jwt-secret.js'
 
 const router = Router()
 const JWT_SECRET = getJwtSecret()
+
+// 存储 refresh token 的简单内存 Map（生产环境应使用数据库）
+const refreshTokens = new Map<string, { userId: string; role: string; expiresAt: number }>()
+
+// Access token 有效期
+const ACCESS_TOKEN_EXPIRY = '1h'
+// Refresh token 有效期（30天）
+const REFRESH_TOKEN_EXPIRY_MS = 30 * 24 * 3600 * 1000
+
+// 清理过期的 refresh token
+setInterval(() => {
+  const now = Date.now()
+  for (const [token, data] of refreshTokens) {
+    if (data.expiresAt < now) {
+      refreshTokens.delete(token)
+    }
+  }
+}, 3600000) // 每小时清理一次
 
 // 检查是否为本地访问
 function isLocalRequest(req: Request): boolean {
@@ -38,21 +57,79 @@ router.post('/login', strictRateLimiter, async (req: Request, res: Response) => 
     // 检查管理员是否首次登录（需要强制修改默认密码）
     const needsPasswordChange = user.password_changed === 0
 
-    const token = jwt.sign(
-      { userId: user.id, role: user.role },
+    const accessToken = jwt.sign(
+      { userId: user.id, role: user.role, type: 'access' },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: ACCESS_TOKEN_EXPIRY }
     )
+
+    // 生成 refresh token
+    const refreshToken = uuidv4()
+    refreshTokens.set(refreshToken, {
+      userId: user.id!,
+      role: user.role,
+      expiresAt: Date.now() + REFRESH_TOKEN_EXPIRY_MS
+    })
 
     logger.info(`User logged in: ${username}`)
     res.json({
-      token,
+      token: accessToken,
+      refreshToken,
+      expiresIn: 3600, // 1小时，供前端计算自动刷新时机
       needsPasswordChange,
       user: { id: user.id, username: user.username, role: user.role }
     })
   } catch (error) {
     logger.error('Login error:', error)
     res.status(500).json({ error: '登录失败' })
+  }
+})
+
+// 刷新 Token
+router.post('/refresh', (req: Request, res: Response) => {
+  try {
+    const { refreshToken } = req.body
+
+    if (!refreshToken) {
+      return res.status(400).json({ error: 'refreshToken 不能为空' })
+    }
+
+    const tokenData = refreshTokens.get(refreshToken)
+    if (!tokenData) {
+      return res.status(401).json({ error: 'Refresh token 无效或已过期' })
+    }
+
+    // 检查是否过期
+    if (tokenData.expiresAt < Date.now()) {
+      refreshTokens.delete(refreshToken)
+      return res.status(401).json({ error: 'Refresh token 已过期，请重新登录' })
+    }
+
+    // 生成新的 access token
+    const newAccessToken = jwt.sign(
+      { userId: tokenData.userId, role: tokenData.role, type: 'access' },
+      JWT_SECRET,
+      { expiresIn: ACCESS_TOKEN_EXPIRY }
+    )
+
+    // 滚动续期 refresh token
+    const newRefreshToken = uuidv4()
+    refreshTokens.set(newRefreshToken, {
+      userId: tokenData.userId,
+      role: tokenData.role,
+      expiresAt: Date.now() + REFRESH_TOKEN_EXPIRY_MS
+    })
+    refreshTokens.delete(refreshToken)
+
+    logger.info(`Token refreshed for user ${tokenData.userId}`)
+    res.json({
+      token: newAccessToken,
+      refreshToken: newRefreshToken,
+      expiresIn: 3600
+    })
+  } catch (error) {
+    logger.error('Token refresh error:', error)
+    res.status(500).json({ error: '刷新 Token 失败' })
   }
 })
 
