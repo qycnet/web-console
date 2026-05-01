@@ -72,13 +72,25 @@ export const api = {
     upload: (formData: FormData) => instance.post('/files/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     }),
+    batchUpload: (formData: FormData) => instance.post('/files/batch-upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 300000
+    }),
     download: (path: string) => instance.get<Blob>('/files/download', {
       params: { path },
       responseType: 'blob'
     }),
     delete: (path: string) => instance.delete('/files', { params: { path } }),
     move: (oldPath: string, newPath: string) => instance.put('/files/move', { oldPath, newPath }),
-    mkdir: (path: string) => instance.post('/files/mkdir', { path })
+    mkdir: (path: string) => instance.post('/files/mkdir', { path }),
+    chunkInit: (filename: string, fileSize: number, targetDir: string) =>
+      instance.post('/files/chunk/init', { filename, fileSize, targetDir }),
+    chunkUpload: (formData: FormData) => instance.post('/files/chunk/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+    chunkMerge: (uploadId: string) => instance.post('/files/chunk/merge', { uploadId }),
+    chunkStatus: (uploadId: string) => instance.get(`/files/chunk/status/${uploadId}`),
+    chunkCancel: (uploadId: string) => instance.delete(`/files/chunk/cancel/${uploadId}`)
   },
 
   skills: {
