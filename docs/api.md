@@ -579,11 +579,20 @@
     "status": "running",
     "pid": 12345,
     "model": "gpt-4",
+    "provider": "deepseek",
+    "temperature": 0.7,
+    "maxTokens": 4096,
+    "avatar": "🎭",
+    "theme": "blue",
     "skills": ["weather", "translator"],
     "uptime": 3600,
     "memoryUsage": 256,
     "cpuUsage": 15,
-    "lastActive": "2024-01-20T16:00:00.000Z"
+    "lastActive": "2024-01-20T16:00:00.000Z",
+    "createdAt": "2024-01-20T10:00:00.000Z",
+    "updatedAt": "2024-01-20T16:00:00.000Z",
+    "description": "幽默脱口秀演员",
+    "persona": "你是张三，一个幽默的脱口秀演员..."
   }
 ]
 ```
@@ -615,7 +624,13 @@
   "name": "my-agent",
   "model": "xiaoyiprovider/LLM_DeepSeekV4_Thinking",
   "persona": "你是张三，一个幽默的脱口秀演员...",
-  "workspace": "/path/to/workspace"
+  "workspace": "/path/to/workspace",
+  "provider": "deepseek",
+  "temperature": 0.7,
+  "maxTokens": 4096,
+  "description": "幽默脱口秀演员",
+  "avatar": "🎭",
+  "theme": "blue"
 }
 ```
 
@@ -663,15 +678,77 @@
 
 ### POST /api/agents/:agentId/chat
 
-与 Agent 对话。使用 openclaw agent CLI（--local --session-id 嵌入模式）。
+与 Agent 对话（旧接口，保留兼容）。使用 openclaw agent CLI 模式。
 
 **请求体：** `{"message": "今天天气怎么样？"}`
 
 **成功响应 (200)：** `{"response": "...Agent回复..."}`
 
+**建议改用** `GET /api/agents/:agentId/chat/stream`（流式接口）以提升体验。
+
+### PUT /api/agents/:agentId
+
+更新 Agent 信息。编辑模型直接改 config.json 的 agents.list，编辑名称/Emoji/主题调用 set-identity，编辑人设写入 workspace 文件，**新增支持 Provider/温度/Max Tokens/描述等字段**。
+
+**请求体：**
+```json
+{
+  "name": "新名称",
+  "model": "xiaoyiprovider/LLM_DeepSeekV4_Thinking",
+  "persona": "新的人设内容...",
+  "emoji": "🦞",
+  "theme": "blue",
+  "avatar": "avatars/my-agent.png",
+  "provider": "deepseek",
+  "temperature": 0.8,
+  "maxTokens": 8192,
+  "description": "更新后的描述"
+}
+```
+
+**成功响应 (200)：** `{"message": "Agent 已更新"}`
+
+**权限：** admin
+
+### GET /api/agents/:agentId/chat/stream
+
+**流式对话（新）** — SSE (text/event-stream) 流式返回，直调 LLM API，代替原来的 CLI 模式。
+
+**请求参数：**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| message | string | ✅ | 用户消息内容 |
+| sessionId | string | ❌ | 会话 ID（留空自动创建新会话） |
+
+**响应格式：** text/event-stream
+
+```text
+data: {"type":"session","sessionId":"uuid-xxx"}
+
+data: {"token":"第"}
+
+data: {"token":"一个"}
+
+data: {"token":"token"}
+
+data: [DONE]
+```
+
+**事件类型：**
+- `type: session` — 返回当前会话 ID（用于后续继续对话）
+- `token` — 单个 Token（字）
+- `[DONE]` — 流结束标志
+
+**说明：**
+- 首字响应时间 < 1 秒
+- 对话使用 Agent 真实配置（provider/temperature/maxTokens）
+- 消息自动持久化到 SQLite
+- 第一条消息自动生成会话标题
+
 ### GET /api/agents/:agentId/stats
 
-获取 Agent 统计信息（基于日志统计 requestCount / errorCount / avgResponseTime）
+获取 Agent 统计信息。**从 SQLite 获取真实数据**（不再基于日志关键词统计）。
 
 **成功响应 (200)：**
 ```json
@@ -682,30 +759,122 @@
   "memoryUsage": 256,
   "cpuUsage": 15,
   "requestCount": 150,
+  "sessionCount": 12,
   "errorCount": 2,
+  "totalMessages": 320,
+  "totalTokens": 48000,
   "avgResponseTime": 350
 }
 ```
 
-### PUT /api/agents/:agentId
+**新增字段说明：**
 
-更新 Agent 信息。编辑模型直接改 config.json 的 agents.list，编辑名称/Emoji/主题调用 set-identity，编辑人设写入 workspace 文件。
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| sessionCount | number | SQLite 中的真实会话数量 |
+| totalMessages | number | 所有会话的总消息数 |
+| totalTokens | number | 所有消息的总 token 数 |
 
-**请求体：**
+### GET /api/agents/:agentId/sessions
+
+获取 Agent 的会话列表（按更新时间倒序）。
+
+**查询参数：** `limit` - 返回数量，默认 50
+
+**成功响应 (200)：**
+```json
+[
+  {
+    "id": "session-uuid",
+    "agent_id": "agent-main",
+    "title": "今天天气怎么样？",
+    "created_at": "2024-01-20T10:00:00.000Z",
+    "updated_at": "2024-01-20T10:05:00.000Z"
+  }
+]
+```
+
+### GET /api/agents/:agentId/sessions/:sessionId
+
+获取会话详情（包含消息列表）。
+
+**成功响应 (200)：**
 ```json
 {
-  "name": "新名称",
-  "model": "xiaoyiprovider/LLM_DeepSeekV4_Thinking",
-  "persona": "新的人设内容...",
-  "emoji": "🦞",
-  "theme": "blue",
-  "avatar": "avatars/my-agent.png"
+  "session": {
+    "id": "session-uuid",
+    "agent_id": "agent-main",
+    "title": "今天天气怎么样？",
+    "created_at": "2024-01-20T10:00:00.000Z",
+    "updated_at": "2024-01-20T10:05:00.000Z"
+  },
+  "messages": [
+    {
+      "id": 1,
+      "session_id": "session-uuid",
+      "role": "user",
+      "content": "今天天气怎么样？",
+      "tokens": 0,
+      "created_at": "2024-01-20T10:00:00.000Z"
+    },
+    {
+      "id": 2,
+      "session_id": "session-uuid",
+      "role": "assistant",
+      "content": "今天天气很好...",
+      "tokens": 120,
+      "created_at": "2024-01-20T10:05:00.000Z"
+    }
+  ]
 }
 ```
 
-**成功响应 (200)：** `{"message": "Agent 已更新"}`
+### POST /api/agents/:agentId/sessions
 
-**权限：** admin
+新建会话。
+
+**请求体：** `{"title": "可选标题"}`
+
+**成功响应 (200)：** `{"id": "new-session-uuid"}`
+
+### DELETE /api/agents/:agentId/sessions/:sessionId
+
+删除会话（级联删除所有消息）。
+
+**成功响应 (200)：** `{"message": "会话已删除"}`
+
+### GET /api/agents/:agentId/sessions/:sessionId/search
+
+搜索会话中的消息。
+
+**查询参数：** `keyword` - 搜索关键词（LIKE %匹配）
+
+**成功响应 (200)：**
+```json
+{
+  "messages": [...],
+  "count": 3
+}
+```
+
+### GET /api/agents/:agentId/sessions/:sessionId/export
+
+导出会话为 JSON 格式。
+
+**成功响应 (200)：**
+```json
+{
+  "session": {
+    "id": "session-uuid",
+    "agentId": "agent-main",
+    "title": "对话标题",
+    "createdAt": "2024-01-20T10:00:00.000Z",
+    "updatedAt": "2024-01-20T10:05:00.000Z"
+  },
+  "messages": [...],
+  "exportedAt": "2024-01-20T12:00:00.000Z"
+}
+```
 
 ### DELETE /api/agents/:agentId
 
