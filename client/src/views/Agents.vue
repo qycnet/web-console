@@ -212,9 +212,9 @@ const createForm = ref({ name: '', model: '', workspace: '', persona: '' })
 const editForm = ref({ name: '', model: '', persona: '', emoji: '', theme: '' })
 const newSkill = ref('')
 
-const modelOptions = [
-  { label: 'default', value: 'default' }
-]
+const modelOptions = ref<{ label: string; value: string }[]>(
+  JSON.parse(JSON.stringify([{ label: 'default', value: 'default' }]))
+)
 
 const availableSkills = ref<{ label: string; value: string }[]>([])
 
@@ -295,6 +295,7 @@ function getStatusText(status?: string) {
 
 onMounted(() => {
   loadAgents()
+  loadModels()
   loadAvailableSkills()
 })
 
@@ -307,6 +308,19 @@ async function loadAgents() {
   } finally {
     loading.value = false
   }
+}
+
+async function loadModels() {
+  try {
+    const models = await api.agents.models()
+    modelOptions.value = [
+      { label: 'default', value: 'default' },
+      ...models.map((m: any) => ({
+        label: `${m.name} (${m.provider})`,
+        value: m.id
+      }))
+    ]
+  } catch {}
 }
 
 async function loadAvailableSkills() {
@@ -425,16 +439,28 @@ async function handleEditAgent() {
   }
 }
 
-function handleRemoveSkill(_skill: string) {
-  message.info('移除技能功能开发中...')
+function handleRemoveSkill(skill: string) {
+  if (!selectedAgent.value) return
+  const idx = selectedAgent.value.skills.indexOf(skill)
+  if (idx !== -1) {
+    selectedAgent.value.skills.splice(idx, 1)
+    message.success(`已移除技能「${skill}」`)
+  }
 }
 
 async function handleAddSkill() {
   if (!newSkill.value || !selectedAgent.value) return
-  selectedAgent.value.skills.push(newSkill.value)
+  // 通过真实API安装技能
+  try {
+    await api.skills.install(newSkill.value)
+    selectedAgent.value.skills.push(newSkill.value)
+    message.success(`技能「${newSkill.value}」已安装`)
+  } catch (err: any) {
+    const msg = err?.error || err?.message || '安装失败'
+    message.error(msg)
+  }
   newSkill.value = ''
   showAddSkill.value = false
-  message.success('技能已添加')
 }
 
 async function handleSendMessage() {

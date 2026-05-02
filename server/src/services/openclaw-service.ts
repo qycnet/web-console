@@ -621,6 +621,45 @@ class OpenClawService extends EventEmitter {
     }
   }
 
+  // ==========================================================================
+  // 模型列表（从 OpenClaw 配置动态读取）
+  // ==========================================================================
+  async getAvailableModels(): Promise<Array<{ id: string; name: string; provider: string }>> {
+    try {
+      // 从 config.json 的 models.providers 读取
+      const config = await this.getConfig()
+      const providers = config?.models?.providers
+      if (providers && typeof providers === 'object') {
+        const result: Array<{ id: string; name: string; provider: string }> = []
+        for (const [providerName, providerConfig] of Object.entries(providers)) {
+          if (providerConfig && typeof providerConfig === 'object') {
+            // 两种可能的结构：{ models: [...] } 或 { model: "..." }
+            const modelList = (providerConfig as any).models
+            if (Array.isArray(modelList)) {
+              for (const m of modelList) {
+                const id = m.id || m.name || m.model || ''
+                if (id) {
+                  result.push({ id, name: m.name || id, provider: providerName })
+                }
+              }
+            } else if ((providerConfig as any).model) {
+              result.push({
+                id: (providerConfig as any).model,
+                name: (providerConfig as any).model,
+                provider: providerName
+              })
+            }
+          }
+        }
+        return result
+      }
+      return []
+    } catch (error) {
+      logger.error('Failed to get available models:', error)
+      return []
+    }
+  }
+
   async getAgentLogsFromCLI(agentId: string, limit: number = 100): Promise<string[]> {
     // 预留：可通过 openclaw agent logs 获取
     return this.getAgentLogs(agentId, limit)

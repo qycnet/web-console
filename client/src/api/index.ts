@@ -115,7 +115,8 @@ export const api = {
     update: (agentId: string, updates: { name?: string; model?: string; persona?: string; emoji?: string; avatar?: string; theme?: string }) =>
       instance.put(`/agents/${agentId}`, updates),
     chat: (agentId: string, message: string) =>
-      instance.post(`/agents/${agentId}/chat`, { message })
+      instance.post(`/agents/${agentId}/chat`, { message }),
+    models: () => instance.get('/agents/models')
   },
 
   monitor: {
