@@ -307,12 +307,12 @@ class OpenClawService extends EventEmitter {
     await fs.ensureDir(path.join(workspaceDir, 'memory'))
 
     // ② 调用 CLI
-    const result = await this._spawnWithOutput('openclaw', [
-      'agents', 'add', name,
-      '--workspace', workspaceDir,
-      options?.model ? '--model' : '', options?.model || '',
-      '--non-interactive', '--json'
-    ].filter(Boolean), 60000)
+    const cliArgs: string[] = ['agents', 'add', name]
+    if (options?.model) { cliArgs.push('--model', options.model) }
+    if (options?.workspace) { cliArgs.push('--workspace', options.workspace) }
+    cliArgs.push('--non-interactive', '--json')
+
+    const result = await this._spawnWithOutput('openclaw', cliArgs, 60000)
 
     const agentIdFromCLI = result.id || agentId
 

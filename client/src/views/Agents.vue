@@ -75,17 +75,25 @@
       </n-tabs>
     </n-modal>
 
-    <!-- 创建 Agent 弹窗 -->
-    <n-modal v-model:show="showCreateModal" preset="card" title="新建 Agent" style="width: 500px;">
+    <!-- 创建 Agent 弹窗（符合方案：写入workspace人设文件 → agents add） -->
+    <n-modal v-model:show="showCreateModal" preset="card" title="新建 Agent" style="width: 600px;">
       <n-form label-placement="left" label-width="100px">
-        <n-form-item label="名称">
-          <n-input v-model:value="createForm.name" placeholder="Agent 名称" />
+        <n-form-item label="名称" required>
+          <n-input v-model:value="createForm.name" placeholder="Agent 名称（如 zhangsan）" />
         </n-form-item>
         <n-form-item label="模型">
-          <n-select v-model:value="createForm.model" :options="modelOptions" placeholder="选择模型" />
+          <n-select v-model:value="createForm.model" :options="modelOptions" placeholder="选择模型（可选）" />
+        </n-form-item>
+        <n-form-item label="人设">
+          <n-input
+            v-model:value="createForm.persona"
+            type="textarea"
+            :rows="6"
+            placeholder="角色的 AGENTS.md 内容，例如：&#10;你是张三，一个幽默的脱口秀演员，&#10;擅长用段子回答各种问题。"
+          />
         </n-form-item>
         <n-form-item label="工作空间">
-          <n-input v-model:value="createForm.workspace" placeholder="工作空间路径（可选）" />
+          <n-input v-model:value="createForm.workspace" placeholder="留空自动生成" disabled />
         </n-form-item>
       </n-form>
       <template #footer>
@@ -96,17 +104,28 @@
       </template>
     </n-modal>
 
-    <!-- 编辑 Agent 弹窗 -->
-    <n-modal v-model:show="showEditModal" preset="card" title="编辑 Agent" style="width: 500px;">
+    <!-- 编辑 Agent 弹窗（符合方案：改人设写workspace + 改模型直接操作config.json） -->
+    <n-modal v-model:show="showEditModal" preset="card" title="编辑 Agent" style="width: 600px;">
       <n-form label-placement="left" label-width="100px">
         <n-form-item label="名称">
           <n-input v-model:value="editForm.name" placeholder="Agent 名称" />
+        </n-form-item>
+        <n-form-item label="模型">
+          <n-select v-model:value="editForm.model" :options="modelOptions" placeholder="修改模型（可选）" />
+        </n-form-item>
+        <n-form-item label="人设">
+          <n-input
+            v-model:value="editForm.persona"
+            type="textarea"
+            :rows="6"
+            placeholder="修改角色的 AGENTS.md 人设"
+          />
         </n-form-item>
         <n-form-item label="Emoji">
           <n-input v-model:value="editForm.emoji" placeholder="🦞" maxlength="2" />
         </n-form-item>
         <n-form-item label="主题">
-          <n-input v-model:value="editForm.theme" placeholder="主题色" />
+          <n-input v-model:value="editForm.theme" placeholder="主题色（如 blue）" />
         </n-form-item>
       </n-form>
       <template #footer>
@@ -189,8 +208,8 @@ const chatInput = ref('')
 const messages = ref<any[]>([])
 const agentLogs = ref('')
 
-const createForm = ref({ name: '', model: '', workspace: '' })
-const editForm = ref({ name: '', emoji: '', theme: '' })
+const createForm = ref({ name: '', model: '', workspace: '', persona: '' })
+const editForm = ref({ name: '', model: '', persona: '', emoji: '', theme: '' })
 const newSkill = ref('')
 
 const modelOptions = [
@@ -374,14 +393,16 @@ async function handleCreateAgent() {
   try {
     const result = await api.agents.create(createForm.value.name, {
       model: createForm.value.model || undefined,
-      workspace: createForm.value.workspace || undefined
+      workspace: createForm.value.workspace || undefined,
+      persona: createForm.value.persona || undefined
     })
     message.success(`Agent「${result.name}」创建成功`)
     showCreateModal.value = false
-    createForm.value = { name: '', model: '', workspace: '' }
+    createForm.value = { name: '', model: '', workspace: '', persona: '' }
     loadAgents()
   } catch (err: any) {
-    message.error(err?.error || '创建失败')
+    const msg = err?.error || err?.message || '创建失败'
+    message.error(msg)
   }
 }
 
@@ -390,6 +411,8 @@ async function handleEditAgent() {
   try {
     await api.agents.update(selectedAgent.value.id, {
       name: editForm.value.name || undefined,
+      model: editForm.value.model || undefined,
+      persona: editForm.value.persona || undefined,
       emoji: editForm.value.emoji || undefined,
       theme: editForm.value.theme || undefined
     })
@@ -397,7 +420,8 @@ async function handleEditAgent() {
     showEditModal.value = false
     loadAgents()
   } catch (err: any) {
-    message.error(err?.error || '更新失败')
+    const msg = err?.error || err?.message || '更新失败'
+    message.error(msg)
   }
 }
 

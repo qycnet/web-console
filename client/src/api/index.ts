@@ -110,9 +110,9 @@ export const api = {
     stop: (agentId: string) => instance.post(`/agents/${agentId}/stop`),
     restart: (agentId: string) => instance.post(`/agents/${agentId}/restart`),
     delete: (agentId: string) => instance.delete(`/agents/${agentId}`),
-    create: (name: string, options?: { model?: string; workspace?: string }) =>
+    create: (name: string, options?: { model?: string; workspace?: string; persona?: string }) =>
       instance.post('/agents', { name, ...options }),
-    update: (agentId: string, updates: { name?: string; emoji?: string; avatar?: string; theme?: string }) =>
+    update: (agentId: string, updates: { name?: string; model?: string; persona?: string; emoji?: string; avatar?: string; theme?: string }) =>
       instance.put(`/agents/${agentId}`, updates),
     chat: (agentId: string, message: string) =>
       instance.post(`/agents/${agentId}/chat`, { message })
