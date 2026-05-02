@@ -62,6 +62,7 @@
             </n-tag>
             <n-button size="tiny" quaternary @click="showAddSkill = true">+ 添加</n-button>
           </n-space>
+          </div>
         </n-tab-pane>
 
         <n-tab-pane name="chat" tab="对话">
