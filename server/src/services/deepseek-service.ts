@@ -1,5 +1,3 @@
-import fs from 'fs-extra'
-import path from 'path'
 import crypto from 'crypto'
 import { database } from './database.js'
 import { logger } from '../utils/logger.js'
@@ -10,69 +8,112 @@ export interface AgentChatConfig {
   persona?: string
   provider: string
   model: string
-  apiKey?: string
+  apiKey?: string            // agent 级别的 API Key（暂未启用，预留）
+  baseUrl?: string           // 从 config.json providers 读取，覆盖硬编码 URL
   temperature: number
   maxTokens: number
 }
 
-// 全局 DeepSeek API Key（从环境变量或 OpenClaw config 读取）
-let globalApiKey: string = process.env.DEEPSEEK_API_KEY || ''
+/**
+ * 从 OpenClaw config.json 读取 providers 配置
+ * 格式参考：
+ * {
+ *   "models": {
+ *     "providers": {
+ *       "deepseek": {
+ *         "apiKey": "sk-xxx",
+ *         "baseUrl": "https://api.deepseek.com",
+ *         "models": ["deepseek-chat"]
+ *       },
+ *       "openai": { "apiKey": "...", "baseUrl": "...", ... }
+ *     }
+ *   }
+ * }
+ */
+let cachedConfig: any = null
 
-export function setGlobalApiKey(key: string) {
-  globalApiKey = key
+async function readProvidersConfig(): Promise<{ apiKey: string; baseUrl: string } | null> {
+  try {
+    // 从 OpenClaw config.json 读取
+    const openclawDir = process.env.OPENCLAW_DIR || path.join(process.env.HOME || '', '.openclaw')
+    const configPath = path.join(openclawDir, 'config.json')
+    if (!await fs.pathExists(configPath)) {
+      return null
+    }
+    const config = await fs.readJson(configPath)
+    cachedConfig = config
+    return config
+  } catch {
+    return null
+  }
 }
 
-export function getGlobalApiKey(): string {
-  return globalApiKey
+function getConfig() {
+  return cachedConfig
 }
 
-type TokenCallback = (token: string) => void
-type DoneCallback = () => void
-type ErrorCallback = (error: string) => void
+export { getConfig as getDeepseekConfig }
 
 /**
- * 从 config.json 获取用户的 API key（支持按 provider 配置）
+ * 获取 provider 在 config.json 中的配置
  */
-function getApiKeyForProvider(provider: string): string {
-  // 先从环境变量
-  const envKey = process.env[`${provider.toUpperCase()}_API_KEY`]
+async function getProviderConfig(providerName: string): Promise<{ apiKey?: string; baseUrl?: string }> {
+  try {
+    const config = await readProvidersConfig()
+    if (!config) return {}
+    const provider = (config as any)?.models?.providers?.[providerName]
+    if (!provider) return {}
+    return {
+      apiKey: provider.apiKey,
+      baseUrl: provider.baseUrl
+    }
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * 获取 API Key — 优先级：
+ * 1. agent 级别的 apiKey（agent.apiKey）
+ * 2. config.json models.providers[provider].apiKey
+ * 3. 环境变量 <PROVIDER>_API_KEY
+ * 4. 空
+ */
+async function resolveApiKey(agent: AgentChatConfig): Promise<string> {
+  // 1. agent 级别
+  if (agent.apiKey) return agent.apiKey
+
+  // 2. config.json 中的 provider 配置
+  const providerCfg = await getProviderConfig(agent.provider)
+  if (providerCfg.apiKey) return providerCfg.apiKey
+
+  // 3. 环境变量
+  const envKey = process.env[`${agent.provider.toUpperCase()}_API_KEY`]
   if (envKey) return envKey
-  // 全局 key
-  if (globalApiKey) return globalApiKey
+
+  // 4. 全局 key
+  const globalKey = process.env.DEEPSEEK_API_KEY || ''
+  if (globalKey) return globalKey
+
   return ''
 }
 
 /**
- * 构建 messages 数组（system prompt + 历史消息 + 当前消息）
+ * 获取 API Base URL — 优先级：
+ * 1. config.json models.providers[provider].baseUrl
+ * 2. agent 级别的 baseUrl
+ * 3. 硬编码默认 URL 映射
+ * 4. 默认 deepseek
  */
-function buildMessages(
-  persona: string | undefined,
-  history: any[],
-  message: string
-): Array<{ role: string; content: string }> {
-  const messages: Array<{ role: string; content: string }> = []
+async function resolveBaseUrl(agent: AgentChatConfig): Promise<string> {
+  // 1. config.json 中的 provider 配置
+  const providerCfg = await getProviderConfig(agent.provider)
+  if (providerCfg.baseUrl) return providerCfg.baseUrl
 
-  // 人设注入
-  if (persona) {
-    messages.push({ role: 'system', content: persona })
-  }
+  // 2. agent 级别
+  if (agent.baseUrl) return agent.baseUrl
 
-  // 历史消息（最近 30 条，控制上下文窗口）
-  const recentHistory = history.slice(-30)
-  for (const msg of recentHistory) {
-    messages.push({ role: msg.role, content: msg.content })
-  }
-
-  // 当前消息
-  messages.push({ role: 'user', content: message })
-
-  return messages
-}
-
-/**
- * 获取兼容 OpenAI 格式的 API base URL
- */
-function getApiBaseUrl(provider: string): string {
+  // 3. 硬编码默认
   const urlMap: Record<string, string> = {
     'deepseek': 'https://api.deepseek.com',
     'openai': 'https://api.openai.com',
@@ -86,14 +127,7 @@ function getApiBaseUrl(provider: string): string {
     'moonshot': 'https://api.moonshot.cn/v1',
     'baichuan': 'https://api.baichuan-ai.com/v1'
   }
-  return urlMap[provider] || 'https://api.deepseek.com'
-}
-
-/**
- * 获取 API Key
- */
-function getApiKey(agent: AgentChatConfig): string {
-  return agent.apiKey || getApiKeyForProvider(agent.provider)
+  return urlMap[agent.provider] || 'https://api.deepseek.com'
 }
 
 /**
@@ -114,15 +148,21 @@ export async function chatStream(
     // 2. 构建 messages
     const messages = buildMessages(agent.persona, history, message)
 
-    // 3. 获取 API key 和 base URL
-    const apiKey = getApiKey(agent)
-    const baseUrl = getApiBaseUrl(agent.provider)
+    // 3. 获取 API key 和 base URL（从 config.json providers 配置）
+    const apiKey = await resolveApiKey(agent)
+    let baseUrl = await resolveBaseUrl(agent)
+    // 确保 baseUrl 不以 /v1 结尾（后面会拼接 /v1/chat/completions）
+    if (baseUrl.endsWith('/v1')) baseUrl = baseUrl.replace(/\/v1$/, '')
+    if (baseUrl.endsWith('/')) baseUrl = baseUrl.replace(/\/$/, '')
+
     const apiUrl = `${baseUrl}/v1/chat/completions`
 
     if (!apiKey) {
       onError('未配置 API Key，请在设置中配置')
       return
     }
+
+    logger.info(`Stream chat: model=${agent.model}, baseUrl=${baseUrl}, session=${sessionId}`)
 
     // 4. 调用 streaming API
     const response = await fetch(apiUrl, {
