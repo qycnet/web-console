@@ -150,7 +150,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, h, computed, onMounted, onUnmounted } from 'vue'
+import { ref, h, computed, onMounted } from 'vue'
 import {
   NCard,
   NDataTable,
@@ -171,7 +171,6 @@ import {
   NFormItem,
   NSelect,
   NSpin,
-  NAlert,
   useMessage,
   useDialog,
   type DataTableColumns
@@ -182,8 +181,7 @@ import {
   StopOutline,
   RefreshOutline,
   ChatbubbleOutline,
-  TrashOutline,
-  SyncOutline
+  TrashOutline
 } from '@vicons/ionicons5'
 import { api } from '@/api'
 
