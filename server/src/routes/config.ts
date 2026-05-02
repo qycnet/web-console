@@ -138,52 +138,6 @@ router.post('/restore/:backupId', async (req, res: Response) => {
 })
 
 // 获取单个配置项
-router.get('/:key', async (req, res: Response) => {
-  try {
-    const configPath = await getConfigFilePath()
-    const configExists = await fs.pathExists(configPath)
-    if (!configExists) {
-      return res.json({})
-    }
-    const config = await fs.readJson(configPath)
-    res.json(config[req.params.key])
-  } catch (error) {
-    logger.error('Failed to read config key:', error)
-    res.status(500).json({ error: '读取配置失败' })
-  }
-})
-
-// 更新配置
-router.put('/:key', async (req, res: Response) => {
-  try {
-    const configPath = await getConfigFilePath()
-
-    // 确保父目录存在
-    await fs.ensureDir(path.dirname(configPath))
-
-    const configExists = await fs.pathExists(configPath)
-
-    if (req.params.key === 'all') {
-      // 全量替换
-      await fs.writeJson(configPath, req.body.value, { spaces: 2 })
-    } else {
-      // 单字段更新
-      let config: Record<string, any> = {}
-      if (configExists) {
-        config = await fs.readJson(configPath)
-      }
-      config[req.params.key] = req.body.value
-      await fs.writeJson(configPath, config, { spaces: 2 })
-    }
-
-    logger.info('Config updated')
-    res.json({ message: '配置已保存' })
-  } catch (error) {
-    logger.error('Failed to update config:', error)
-    res.status(500).json({ error: '保存配置失败' })
-  }
-})
-
 // ============================================================================
 // 供应商管理（Provider CRUD）
 // config.json 结构：{ models: { providers: { name: { apiKey, baseUrl, ... } } } }
@@ -533,6 +487,52 @@ router.put('/providers/:name/models/:modelId/default', async (req: Request, res:
     res.status(500).json({ error: '设置默认模型失败' })
   }
 })
+router.get('/:key', async (req, res: Response) => {
+  try {
+    const configPath = await getConfigFilePath()
+    const configExists = await fs.pathExists(configPath)
+    if (!configExists) {
+      return res.json({})
+    }
+    const config = await fs.readJson(configPath)
+    res.json(config[req.params.key])
+  } catch (error) {
+    logger.error('Failed to read config key:', error)
+    res.status(500).json({ error: '读取配置失败' })
+  }
+})
+
+// 更新配置
+router.put('/:key', async (req, res: Response) => {
+  try {
+    const configPath = await getConfigFilePath()
+
+    // 确保父目录存在
+    await fs.ensureDir(path.dirname(configPath))
+
+    const configExists = await fs.pathExists(configPath)
+
+    if (req.params.key === 'all') {
+      // 全量替换
+      await fs.writeJson(configPath, req.body.value, { spaces: 2 })
+    } else {
+      // 单字段更新
+      let config: Record<string, any> = {}
+      if (configExists) {
+        config = await fs.readJson(configPath)
+      }
+      config[req.params.key] = req.body.value
+      await fs.writeJson(configPath, config, { spaces: 2 })
+    }
+
+    logger.info('Config updated')
+    res.json({ message: '配置已保存' })
+  } catch (error) {
+    logger.error('Failed to update config:', error)
+    res.status(500).json({ error: '保存配置失败' })
+  }
+})
+
 router.post('/reload', async (_, res: Response) => {
   try {
     // 尝试通过 openclawService 热重载
