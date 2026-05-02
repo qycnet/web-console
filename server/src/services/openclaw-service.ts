@@ -2,7 +2,6 @@ import { EventEmitter } from 'events'
 import { spawn, ChildProcess } from 'child_process'
 import fs from 'fs-extra'
 import path from 'path'
-import crypto from 'crypto'
 import { logger } from '../utils/logger.js'
 
 export interface AgentInfo {
@@ -593,102 +592,6 @@ class OpenClawService extends EventEmitter {
     await this.startAgent(agentId)
   }
 
-  // ==========================================================================
-  // 发送消息
-  // ==========================================================================
-  async sendMessage(agentId: string, message: string): Promise<string> {
-    try {
-      return await this._sendMessageWithAgent(agentId, message)
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error)
-      logger.error(`sendMessage failed: ${msg}`)
-      return `抱歉，发送消息失败: ${msg}`
-    }
-  }
-
-  private async _sendMessageWithAgent(agentId: string, message: string, retryWithoutAgent: boolean = true): Promise<string> {
-    return new Promise((resolve) => {
-      const sessionId = crypto.randomUUID()
-      const args = ['agent', '--local', '--json', '--message', message, '--session-id', sessionId]
-      if (agentId && agentId !== 'default') args.push('--agent', agentId)
-
-      const proc = spawn('openclaw', args, {
-        cwd: this.openclawDir,
-        timeout: 120000,
-        stdio: ['pipe', 'pipe', 'pipe']
-      })
-
-      let stdout = ''
-      let stderr = ''
-
-      proc.stdout.on('data', (data: Buffer) => { stdout += data.toString() })
-      proc.stderr.on('data', (data: Buffer) => { stderr += data.toString() })
-
-      proc.on('close', async (code: number | null) => {
-        const combinedOutput = stdout + '\n' + stderr
-        if (code === 0) {
-          const reply = this._extractReply(combinedOutput)
-          if (reply) { resolve(reply); return }
-          const text = (stdout.trim() || stderr.trim())
-          if (text.length > 5) { resolve(text); return }
-          resolve('Agent 已收到消息，但没有返回文本回复。')
-        } else {
-          const errMsg = stderr.trim() || stdout.trim()
-          if (retryWithoutAgent && agentId &&
-              (errMsg.toLowerCase().includes('unknown agent') || errMsg.toLowerCase().includes('not found'))) {
-            logger.warn(`Agent ${agentId} not found via --agent, retrying with --session-id only`)
-            try {
-              const fallback = await this._sendMessageWithAgent('', message, false)
-              resolve(fallback); return
-            } catch {}
-          }
-          const reply = this._extractReply(combinedOutput)
-          if (reply) { resolve(reply); return }
-          if (errMsg.length > 3) {
-            resolve(`Agent: ${errMsg.replace(/\n/g, ' | ').substring(0, 500)}`)
-          } else {
-            logger.warn(`openclaw agent exit code=${code}, stderr=${stderr}`)
-            resolve(`Agent 当前不可用（退出码 ${code}），请稍后重试。`)
-          }
-        }
-      })
-
-      proc.on('error', (err: Error) => {
-        logger.error(`Failed to spawn openclaw agent:`, err)
-        resolve(`无法连接到 Agent: ${err.message}`)
-      })
-    })
-  }
-
-  private _extractReply(output: string): string | null {
-    const jsonMatch = output.match(/\{[\s\S]*\}/m)
-    if (!jsonMatch) return null
-
-    try {
-      const result = JSON.parse(jsonMatch[0].trim())
-      if (result.payloads && Array.isArray(result.payloads)) {
-        const texts = result.payloads.filter((p: any) => p.role === 'assistant').map((p: any) => (p.text || '').trim()).filter(Boolean)
-        if (texts.length > 0) return texts.join('\n')
-      }
-      const reply = result.response || result.reply || result.text || result.content || ''
-      if (reply) return reply
-      const found = this._deepFindText(result)
-      if (found) return found
-    } catch {}
-    return null
-  }
-
-  private _deepFindText(obj: any, depth: number = 0): string | null {
-    if (depth > 5 || !obj || typeof obj !== 'object') return null
-    for (const val of Object.values(obj)) {
-      if (typeof val === 'string' && val.length > 3) return val
-      const nested = this._deepFindText(val, depth + 1)
-      if (nested) return nested
-    }
-    return null
-  }
-
-  // ==========================================================================
   // 日志 / 监控
   // ==========================================================================
   async getAgentLogs(agentId: string, limit: number = 100): Promise<string[]> {

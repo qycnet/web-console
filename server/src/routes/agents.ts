@@ -237,26 +237,7 @@ router.get('/:agentId/logs', async (req: Request, res: Response) => {
     logger.error('Failed to get agent logs:', error)
     res.status(500).json({ error: '获取日志失败' })
   }
-})
-
-/**
- * POST /api/agents/:agentId/chat
- * 与 Agent 对话
- */
-router.post('/:agentId/chat', async (req: Request, res: Response) => {
-  try {
-    const { message } = req.body
-    if (!message) {
-      return res.status(400).json({ error: '消息内容不能为空' })
-    }
-
-    const response = await openclawService.sendMessage(req.params.agentId, message)
-    res.json({ response })
-  } catch (error) {
-    logger.error('Failed to send message:', error)
-    res.status(500).json({ error: '发送消息失败' })
-  }
-})
+}}
 
 /**
  * GET /api/agents/:agentId/stats

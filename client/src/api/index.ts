@@ -172,8 +172,6 @@ export const api = {
       description?: string
     }) =>
       instance.put(`/agents/${agentId}`, updates),
-    chat: (agentId: string, message: string) =>
-      instance.post(`/agents/${agentId}/chat`, { message }, { timeout: 180000 }),
     models: () => instance.get('/agents/models'),
 
     // ====== 流式对话（新） ======
