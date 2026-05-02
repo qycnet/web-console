@@ -105,7 +105,7 @@
           <!-- 空状态 -->
           <n-empty v-if="filteredMarketSkills.length === 0 && !isLoadingMarket" description="没有找到匹配的技能">
             <template #extra>
-              <n-button size="small" @click="loadMarket">刷新</n-button>
+              <n-button size="small" @click="() => loadMarket()">刷新</n-button>
             </template>
           </n-empty>
         </n-space>

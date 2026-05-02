@@ -117,7 +117,6 @@ interface NetIface {
 let timer: number
 let prevNet: NetIface[] = []
 let netHistory: { time: string; rx: number; tx: number }[] = []
-let snapshotCount = 0
 
 onMounted(async () => {
   initCharts()

@@ -31,19 +31,15 @@ import {
   NCard,
   NDataTable,
   NButton,
-  NSpace,
   NTag,
   NIcon,
-  NModal,
   NTabs,
   NTabPane,
-  NDescriptions,
-  NDescriptionsItem,
   useMessage,
   useDialog,
   type DataTableColumns
 } from 'naive-ui'
-import { PhonePortraitOutline, LaptopOutline, GlobeOutline, DesktopOutline, HelpCircleOutline } from '@vicons/ionicons5'
+import { PhonePortraitOutline, LaptopOutline, GlobeOutline, DesktopOutline, HelpCircleOutline, PhoneLandscapeOutline } from '@vicons/ionicons5'
 import api from '../api'
 
 const message = useMessage()
