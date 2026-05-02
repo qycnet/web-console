@@ -115,25 +115,30 @@ npm start
 web-console/
 ├── client/                    # 前端代码
 │   ├── src/
-│   │   ├── views/            # 页面组件（9个）
+│   │   ├── views/            # 页面组件
 │   │   ├── components/       # 通用组件
 │   │   ├── stores/           # Pinia 状态管理
 │   │   ├── router/           # 路由配置
 │   │   ├── api/              # API 接口封装
 │   │   ├── composables/      # 组合式函数
-│   │   └── utils/            # 工具函数
-│   └── tests/                # 前端测试
+│   │   ├── types/            # 类型声明
+│   │   └── assets/           # 静态资源
+│   ├── App.vue               # 根组件
+│   └── main.ts               # 入口文件
 ├── server/                    # 后端代码
 │   ├── src/
-│   │   ├── routes/           # API 路由（8个）
+│   │   ├── index.ts          # 服务入口
+│   │   ├── routes/           # API 路由
 │   │   ├── services/         # 核心服务
 │   │   ├── middleware/       # 中间件
 │   │   └── utils/            # 工具函数
 │   └── tests/                # 后端测试
-└── docs/                     # 文档
-    ├── requirements.md       # 需求文档
-    ├── api.md                # API 文档
-    └── deployment.md         # 部署文档
+├── docs/                     # 文档
+│   ├── requirements.md       # 需求文档
+│   ├── api.md                # API 文档
+│   └── deployment.md         # 部署文档
+├── package.json              # 项目配置
+└── README.md                 # 本文件
 ```
 
 ## 🧪 测试

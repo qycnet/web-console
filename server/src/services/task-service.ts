@@ -15,7 +15,7 @@ export interface Task {
   completedAt?: string
 }
 
-type TaskRunner = (task: Task) => Promise<any>
+type TaskRunner = (task: Task, payload?: any) => Promise<any>
 
 class TaskService extends EventEmitter {
   private tasks: Map<string, Task> = new Map()
