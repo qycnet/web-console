@@ -18,7 +18,7 @@
     </n-card>
 
     <!-- 详情/对话弹窗 -->
-    <n-modal v-model:show="showDetail" preset="card" style="width: 900px; height: 600px;">
+    <n-modal v-model:show="showDetail" preset="card" style="width: 900px; height: 600px;" :content-style="{ padding: 0 }">
       <template #header>
         <n-space align="center">
           <span>{{ selectedAgent?.name }}</span>
@@ -29,9 +29,10 @@
         </n-space>
       </template>
 
-      <n-tabs type="line">
+      <n-tabs type="line" class="agent-detail-tabs">
         <n-tab-pane name="info" tab="信息">
-          <n-descriptions :column="2" bordered>
+          <div class="tab-scroll-container">
+            <n-descriptions :column="2" bordered>
             <n-descriptions-item label="ID">{{ selectedAgent?.id }}</n-descriptions-item>
             <n-descriptions-item label="状态">
               <n-tag :type="getStatusType(selectedAgent?.status)">
@@ -131,7 +132,9 @@
         </n-tab-pane>
 
         <n-tab-pane name="logs" tab="日志">
-          <n-log :rows="15" :log="agentLogs" language="log" />
+          <div class="tab-scroll-container">
+            <n-log :rows="15" :log="agentLogs" language="log" />
+          </div>
         </n-tab-pane>
       </n-tabs>
     </n-modal>
@@ -936,6 +939,25 @@ async function handleSendMessage() {
   display: flex;
   flex-direction: column;
   height: 400px;
+}
+
+.tab-scroll-container {
+  padding: 16px;
+  max-height: 460px;
+  overflow-y: auto;
+}
+
+.agent-detail-tabs {
+  height: 100%;
+}
+
+.agent-detail-tabs > .n-tabs-nav {
+  padding: 0 16px;
+}
+
+.agent-detail-tabs .n-tab-pane {
+  height: calc(100% - 44px);
+  padding: 0 !important;
 }
 
 .messages {
