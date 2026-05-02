@@ -1,3 +1,5 @@
+import fs from 'fs-extra'
+import path from 'path'
 import crypto from 'crypto'
 import { database } from './database.js'
 import { logger } from '../utils/logger.js'
@@ -12,6 +14,37 @@ export interface AgentChatConfig {
   baseUrl?: string           // 从 config.json providers 读取，覆盖硬编码 URL
   temperature: number
   maxTokens: number
+}
+
+type TokenCallback = (token: string) => void
+type DoneCallback = () => void
+type ErrorCallback = (error: string) => void
+
+/**
+ * 构建 messages 数组（system prompt + 历史消息 + 当前消息）
+ */
+function buildMessages(
+  persona: string | undefined,
+  history: any[],
+  message: string
+): Array<{ role: string; content: string }> {
+  const messages: Array<{ role: string; content: string }> = []
+
+  // 人设注入
+  if (persona) {
+    messages.push({ role: 'system', content: persona })
+  }
+
+  // 历史消息（最近 30 条，控制上下文窗口）
+  const recentHistory = history.slice(-30)
+  for (const msg of recentHistory) {
+    messages.push({ role: msg.role, content: msg.content })
+  }
+
+  // 当前消息
+  messages.push({ role: 'user', content: message })
+
+  return messages
 }
 
 /**
