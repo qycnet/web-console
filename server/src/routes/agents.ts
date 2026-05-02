@@ -82,21 +82,33 @@ router.get('/:agentId/chat/stream', async (req: Request, res: Response) => {
   try {
     // 获取 Agent 配置
     const agentInfo = await openclawService.getAgent(agentId)
-    if (!agentInfo) {
-      res.write(`data: ${JSON.stringify({ error: 'Agent 不存在' })}\n\n`)
-      res.end()
-      return
-    }
+    let agentConfig: AgentChatConfig
 
-    const agentConfig: AgentChatConfig = {
-      id: agentInfo.id,
-      name: agentInfo.name,
-      persona: agentInfo.persona,
-      provider: agentInfo.provider || 'deepseek',
-      model: agentInfo.model || 'deepseek-chat',
-      apiKey: agentInfo.apiKey || undefined,
-      temperature: agentInfo.temperature ?? 0.7,
-      maxTokens: agentInfo.maxTokens ?? 4096
+    if (agentInfo) {
+      agentConfig = {
+        id: agentInfo.id,
+        name: agentInfo.name,
+        persona: agentInfo.persona,
+        provider: agentInfo.provider || 'deepseek',
+        model: agentInfo.model || 'deepseek-chat',
+        apiKey: agentInfo.apiKey || undefined,
+        temperature: agentInfo.temperature ?? 0.7,
+        maxTokens: agentInfo.maxTokens ?? 4096
+      }
+    } else {
+      // main/default agent → 从 config.json 默认配置读取
+      const config = await openclawService.getConfig()
+      const defaults = config?.agents?.defaults || {}
+      const primary = defaults?.model?.primary || 'deepseek/deepseek-chat'
+      const parts = primary.split('/')
+      agentConfig = {
+        id: agentId,
+        name: agentId === 'main' ? 'Main Agent' : agentId,
+        provider: parts.length > 1 ? parts[0] : 'deepseek',
+        model: parts.length > 1 ? parts[1] : parts[0],
+        temperature: 0.7,
+        maxTokens: 4096
+      }
     }
 
     await chatStream(
