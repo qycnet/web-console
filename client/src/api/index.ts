@@ -119,6 +119,11 @@ export const api = {
     models: () => instance.get('/agents/models')
   },
 
+  tasks: {
+    get: (taskId: string) => instance.get(`/tasks/${taskId}`),
+    list: (limit?: number) => instance.get('/tasks', { params: { limit } })
+  },
+
   monitor: {
     system: () => instance.get('/monitor/system'),
     processes: () => instance.get('/monitor/processes'),

@@ -2,7 +2,7 @@
   <div class="agents-page">
     <n-card title="Agent 管理">
       <template #header-extra>
-        <n-button type="primary" @click="showCreateModal = true">
+        <n-button type="primary" @click="showCreateModal = true" :disabled="hasPendingTasks">
           <template #icon><n-icon :component="AddOutline" /></template>
           新建 Agent
         </n-button>
@@ -150,7 +150,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, h, onMounted } from 'vue'
+import { ref, h, computed, onMounted, onUnmounted } from 'vue'
 import {
   NCard,
   NDataTable,
@@ -170,6 +170,8 @@ import {
   NForm,
   NFormItem,
   NSelect,
+  NSpin,
+  NAlert,
   useMessage,
   useDialog,
   type DataTableColumns
@@ -180,7 +182,8 @@ import {
   StopOutline,
   RefreshOutline,
   ChatbubbleOutline,
-  TrashOutline
+  TrashOutline,
+  SyncOutline
 } from '@vicons/ionicons5'
 import { api } from '@/api'
 
@@ -193,6 +196,12 @@ interface Agent {
   skills: string[]
   createdAt: string
   persona?: string
+}
+
+interface PendingOp {
+  taskId: string
+  type: 'create' | 'update' | 'delete'
+  message: string
 }
 
 const message = useMessage()
@@ -219,14 +228,101 @@ const modelOptions = ref<{ label: string; value: string }[]>(
 
 const availableSkills = ref<{ label: string; value: string }[]>([])
 
+// ====== 异步任务状态管理 ======
+const pendingTasks = ref<Map<string, PendingOp>>(new Map())
+let taskPollTimer: ReturnType<typeof setInterval> | null = null
+
+/** 当前是否有任务在跑 */
+const hasPendingTasks = computed(() => pendingTasks.value.size > 0)
+
+/**
+ * 获取 Agent 在某个操作类型的任务中时返回 'pending'，否则返回原状态
+ */
+function getAgentStatus(agent: Agent): string {
+  if (pendingTasks.value.has(agent.id)) return 'pending'
+  return agent.status
+}
+
+function getStatusType(status?: string) {
+  switch (status) {
+    case 'running': return 'success'
+    case 'stopped': return 'default'
+    case 'error': return 'error'
+    case 'pending': return 'warning'
+    default: return 'default'
+  }
+}
+
+function getStatusText(status?: string) {
+  switch (status) {
+    case 'running': return '运行中'
+    case 'stopped': return '已停止'
+    case 'error': return '错误'
+    case 'pending': return '任务中...'
+    default: return '未知'
+  }
+}
+
+/**
+ * 提交异步任务，开始轮询
+ */
+function submitTask(agentId: string, taskId: string, type: PendingOp['type'], msg: string) {
+  pendingTasks.value.set(agentId, { taskId, type, message: msg })
+  if (!taskPollTimer) {
+    taskPollTimer = setInterval(pollTasks, 2000)
+  }
+}
+
+/**
+ * 轮询所有 pending 任务的状态
+ */
+async function pollTasks() {
+  if (pendingTasks.value.size === 0) {
+    if (taskPollTimer) { clearInterval(taskPollTimer); taskPollTimer = null }
+    return
+  }
+
+  for (const [agentId, op] of pendingTasks.value.entries()) {
+    try {
+      const result = await api.tasks.get(op.taskId)
+      if (result.status === 'success') {
+        pendingTasks.value.delete(agentId)
+        message.success(`操作完成: ${op.message}`)
+        loadAgents()
+      } else if (result.status === 'failed') {
+        pendingTasks.value.delete(agentId)
+        message.error(`操作失败: ${result.error || op.message}`)
+        loadAgents()
+      }
+      // pending / running — 继续等
+    } catch {
+      // 请求失败暂不处理，下次轮询重试
+    }
+  }
+
+  if (pendingTasks.value.size === 0 && taskPollTimer) {
+    clearInterval(taskPollTimer)
+    taskPollTimer = null
+  }
+}
+
 const columns: DataTableColumns<Agent> = [
   { title: '名称', key: 'name' },
   {
     title: '状态',
     key: 'status',
-    width: 100,
+    width: 120,
     render(row) {
-      return h(NTag, { type: getStatusType(row.status) }, { default: () => getStatusText(row.status) })
+      const effStatus = getAgentStatus(row)
+      return h(NSpace, { align: 'center', size: 'small' }, {
+        default: () => {
+          const items = [h(NTag, { type: getStatusType(effStatus) as any, size: 'small' }, { default: () => getStatusText(effStatus) })]
+          if (effStatus === 'pending') {
+            items.push(h(NSpin, { size: 'small' }))
+          }
+          return items
+        }
+      })
     }
   },
   { title: '模型', key: 'model', width: 120 },
@@ -242,32 +338,38 @@ const columns: DataTableColumns<Agent> = [
     key: 'actions',
     width: 300,
     render(row) {
+      const isPending = pendingTasks.value.has(row.id)
       return h(NSpace, null, {
         default: () => [
           h(NButton, {
             size: 'small',
             quaternary: true,
+            disabled: isPending,
             onClick: () => handleView(row)
           }, { icon: () => h(NIcon, { component: ChatbubbleOutline }) }),
           row.status === 'running' ?
             h(NButton, {
               size: 'small',
               quaternary: true,
+              disabled: isPending,
               onClick: () => handleStop(row)
             }, { icon: () => h(NIcon, { component: StopOutline }) }) :
             h(NButton, {
               size: 'small',
               quaternary: true,
+              disabled: isPending,
               onClick: () => handleStart(row)
             }, { icon: () => h(NIcon, { component: PlayOutline }) }),
           h(NButton, {
             size: 'small',
             quaternary: true,
+            disabled: isPending,
             onClick: () => handleRestart(row)
           }, { icon: () => h(NIcon, { component: RefreshOutline }) }),
           h(NButton, {
             size: 'small',
             quaternary: true,
+            disabled: isPending,
             onClick: () => handleDelete(row)
           }, { icon: () => h(NIcon, { component: TrashOutline }) })
         ]
@@ -392,9 +494,16 @@ function handleDelete(agent: Agent) {
     negativeText: '取消',
     onPositiveClick: async () => {
       try {
-        await api.agents.delete(agent.id)
-        message.success('Agent 已删除')
-        loadAgents()
+        // 改成异步任务 + 轮询
+        const result = await api.agents.delete(agent.id)
+        if (result.taskId) {
+          submitTask(agent.id, result.taskId, 'delete', '删除 Agent')
+          message.info('删除任务已提交，正在处理...')
+        } else {
+          // 兼容非异步响应
+          message.success('Agent 已删除')
+          loadAgents()
+        }
       } catch (err: any) {
         message.error(err?.error || '删除失败')
       }
@@ -413,10 +522,20 @@ async function handleCreateAgent() {
       workspace: createForm.value.workspace || undefined,
       persona: createForm.value.persona || undefined
     })
-    message.success(`Agent「${result.name}」创建成功`)
-    showCreateModal.value = false
-    createForm.value = { name: '', model: '', workspace: '', persona: '' }
-    loadAgents()
+    if (result.taskId) {
+      // 异步任务模式
+      const agentName = createForm.value.name
+      submitTask(agentName, result.taskId, 'create', '创建 Agent')
+      message.info('创建任务已提交，正在处理...')
+      showCreateModal.value = false
+      createForm.value = { name: '', model: '', workspace: '', persona: '' }
+    } else {
+      // 兼容非异步响应
+      message.success(`Agent「${result.name}」创建成功`)
+      showCreateModal.value = false
+      createForm.value = { name: '', model: '', workspace: '', persona: '' }
+      loadAgents()
+    }
   } catch (err: any) {
     const msg = err?.error || err?.message || '创建失败'
     message.error(msg)
@@ -426,16 +545,24 @@ async function handleCreateAgent() {
 async function handleEditAgent() {
   if (!selectedAgent.value) return
   try {
-    await api.agents.update(selectedAgent.value.id, {
+    const result = await api.agents.update(selectedAgent.value.id, {
       name: editForm.value.name || undefined,
       model: editForm.value.model || undefined,
       persona: editForm.value.persona || undefined,
       emoji: editForm.value.emoji || undefined,
       theme: editForm.value.theme || undefined
     })
-    message.success('Agent 信息已更新')
-    showEditModal.value = false
-    loadAgents()
+    if (result.taskId) {
+      // 异步任务模式
+      submitTask(selectedAgent.value.id, result.taskId, 'update', '更新 Agent')
+      message.info('更新任务已提交，正在处理...')
+      showEditModal.value = false
+    } else {
+      // 兼容非异步响应
+      message.success('Agent 信息已更新')
+      showEditModal.value = false
+      loadAgents()
+    }
   } catch (err: any) {
     const msg = err?.error || err?.message || '更新失败'
     message.error(msg)
