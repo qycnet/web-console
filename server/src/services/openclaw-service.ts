@@ -363,7 +363,7 @@ class OpenClawService extends EventEmitter {
         if (updates.theme) args.push('--theme', updates.theme)
         args.push('--json')
 
-        await this._spawnWithOutput('openclaw', args, 15000)
+        await this._spawnWithOutput('openclaw', args, 60000)
       }
     }
 
@@ -390,7 +390,7 @@ class OpenClawService extends EventEmitter {
    */
   async deleteAgent(agentId: string): Promise<void> {
     // ① CLI 删除
-    await this._spawnWithOutput('openclaw', ['agents', 'delete', agentId, '--force', '--json'], 15000)
+    await this._spawnWithOutput('openclaw', ['agents', 'delete', agentId, '--force', '--json'], 60000)
 
     // ② 清理 web-console workspace 目录
     const reg = (await this.getRegistry())[agentId]
@@ -425,28 +425,34 @@ class OpenClawService extends EventEmitter {
 
   /**
    * spawn 并等待输出
+   * 注意：使用手动 timeout（setTimeout + proc.kill）而非 spawn 内置的 timeout，
+   * 因为内置 timeout 会在超时时立刻 SIGTERM 进程并使 exit code 为 null，
+   * 导致 close 事件拿到的 stderr 被截断。
+   * 手动 timeout 可以等到 stderr 收集完整后再 reject。
    */
   private async _spawnWithOutput(cmd: string, args: string[], timeoutMs: number = 30000): Promise<any> {
     return new Promise((resolve, reject) => {
       const proc = spawn(cmd, args, {
         cwd: this.openclawDir,
-        timeout: timeoutMs,
         stdio: ['pipe', 'pipe', 'pipe']
       })
 
       let stdout = ''
       let stderr = ''
+      let killed = false
 
       proc.stdout.on('data', (data: Buffer) => { stdout += data.toString() })
       proc.stderr.on('data', (data: Buffer) => { stderr += data.toString() })
 
       const timeout = setTimeout(() => {
+        killed = true
         proc.kill()
-        reject(new Error(`Command timed out after ${timeoutMs}ms: stderr: ${stderr.substring(0, 500)}`))
+        reject(new Error(`Command timed out after ${timeoutMs}ms`))
       }, timeoutMs)
 
       proc.on('close', (code) => {
         clearTimeout(timeout)
+        if (killed) return // 超时 kill 触发的 close，已由 timeout 回调 reject
         if (code === 0) {
           if (stdout) {
             try {
@@ -459,7 +465,8 @@ class OpenClawService extends EventEmitter {
             resolve({})
           }
         } else {
-          reject(new Error(`Exit code ${code}: ${stderr.substring(0, 500)}`))
+          const errText = stderr.substring(0, 500) || stdout.substring(0, 500)
+          reject(new Error(`Exit code ${code}: ${errText}`))
         }
       })
 
