@@ -155,6 +155,9 @@ export const api = {
     ): EventSource => {
       const params = new URLSearchParams({ message })
       if (sessionId) params.set('sessionId', sessionId)
+      // EventSource 不能携带 Authorization header，所以把 token 拼到 query
+      const token = localStorage.getItem('token')
+      if (token) params.set('token', token)
       const url = `/api/agents/${agentId}/chat/stream?${params.toString()}`
       const eventSource = new EventSource(url)
 

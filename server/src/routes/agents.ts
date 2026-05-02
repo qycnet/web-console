@@ -279,8 +279,26 @@ router.delete('/:agentId',
 // ============================================================================
 // 流式对话（新）：GET /api/agents/:agentId/chat/stream
 // SSE (text/event-stream) 流式返回
+// 注意：EventSource 不能携带 Authorization header，
+// 因此从 query 参数 token 鉴权（替代 router-level authMiddleware）
 // ============================================================================
 router.get('/:agentId/chat/stream', async (req: Request, res: Response) => {
+  // 从 query 参数获取 token 鉴权（EventSource 无法带自定义 Header）
+  try {
+    const token = req.query.token as string
+    if (!token) {
+      res.status(401).json({ error: '未授权访问' })
+      return
+    }
+    const { default: jwt } = await import('jsonwebtoken')
+    const { getJwtSecret } = await import('../utils/jwt-secret.js')
+    const decoded = jwt.verify(token, getJwtSecret()) as any
+    req.user = { userId: decoded.userId, role: decoded.role }
+  } catch {
+    res.status(401).json({ error: 'Token 无效或已过期' })
+    return
+  }
+
   // 设置 SSE headers
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
