@@ -146,10 +146,11 @@ class OpenClawService extends EventEmitter {
 
   /**
    * 获取所有 Agent 列表
+   * 优先级：状态文件 → CLI(带超时) → 配置文件 → []
    */
   async getAgents(): Promise<AgentInfo[]> {
     try {
-      // 从 OpenClaw 状态文件读取
+      // ① 从 OpenClaw 状态文件读取
       const statePath = path.join(this.openclawDir, 'state', 'agents.json')
       if (await fs.pathExists(statePath)) {
         const state = await fs.readJson(statePath)
@@ -168,15 +169,20 @@ class OpenClawService extends EventEmitter {
         return agents
       }
 
-      // 通过 openclaw CLI 读取真实 Agent 列表
+      // ② 通过 openclaw CLI 读取真实 Agent 列表（加超时避免卡死）
       try {
-        const agents = await this.getAgentsFromCLI()
+        const agents = await Promise.race([
+          this.getAgentsFromCLI(),
+          new Promise<AgentInfo[]>((_, reject) =>
+            setTimeout(() => reject(new Error('CLI timeout')), 10000)
+          )
+        ])
         if (agents.length > 0) return agents
       } catch {
-        // CLI 不可用时，从 OpenClaw 配置文件读取
+        // CLI 超时或失败，继续降级
       }
 
-      // 从 OpenClaw 配置文件中读取 agents 配置
+      // ③ 从 OpenClaw 配置文件中读取 agents 配置
       try {
         const config = await this.getConfig()
         if (config.agents && Array.isArray(config.agents) && config.agents.length > 0) {
@@ -184,7 +190,7 @@ class OpenClawService extends EventEmitter {
         }
       } catch {}
 
-      // 无数据时返回空列表而非 Mock
+      // ④ 无数据时返回空列表
       return []
     } catch (error) {
       logger.error('Failed to get agents:', error)
@@ -316,93 +322,97 @@ class OpenClawService extends EventEmitter {
   /**
    * 向 Agent 发送消息
    * 通过 openclaw agent CLI（--local 嵌入模式）与 Agent 通信
+   *
+   * 策略：
+   * 1. 优先使用 --agent <id> --session-id <uuid>
+   * 2. 如果 --agent 方式失败（agent id 不存在），fallback 到
+   *    --session-id 方式（不指定 agent，走默认路由）
    */
   async sendMessage(agentId: string, message: string): Promise<string> {
     try {
-      return new Promise((resolve) => {
-        const proc = spawn('openclaw', ['agent', '--agent', agentId, '--message', message, '--local', '--json'], {
-          cwd: this.openclawDir,
-          timeout: 120000,
-          stdio: ['pipe', 'pipe', 'pipe']
-        })
-
-        let stdout = ''
-        let stderr = ''
-
-        proc.stdout.on('data', (data: Buffer) => {
-          stdout += data.toString()
-        })
-
-        proc.stderr.on('data', (data: Buffer) => {
-          stderr += data.toString()
-        })
-
-        proc.on('close', (code: number | null) => {
-          if (code === 0 && stdout) {
-            // 从 stdout 提取 JSON（忽略混入的 stderr 警告）
-            const cleanStdout = this.extractJSON(stdout)
-            if (cleanStdout) {
-              try {
-                const result = JSON.parse(cleanStdout)
-                const reply = result.response || result.reply || result.text || result.content || ''
-                if (reply) {
-                  resolve(reply)
-                  return
-                }
-              } catch {
-                // JSON 解析失败，尝试直接输出
-              }
-            }
-            // 非 JSON 或 response 为空
-            const text = stdout.trim()
-            if (text.length > 5) {
-              resolve(text)
-            } else {
-              resolve('Agent 已收到消息，但没有返回文本回复。')
-            }
-          } else {
-            // 非 0 退出：尝试从 stdout/stderr 提取错误信息
-            const errMsg = stderr.trim() || stdout.trim()
-            if (errMsg && errMsg.length > 3) {
-              // 返回真实错误而不是固定字符串
-              resolve(`Agent: ${errMsg.replace(/\n/g, ' | ').substring(0, 500)}`)
-            } else {
-              logger.warn(`openclaw agent exit code=${code}, stderr=${stderr}`)
-              resolve(`Agent 当前不可用（退出码 ${code}），请稍后重试。`)
-            }
-          }
-        })
-
-        proc.on('error', (err: Error) => {
-          logger.error(`Failed to spawn openclaw agent:`, err)
-          resolve(`无法连接到 Agent: ${err.message}`)
-        })
-      })
+      return await this._sendMessageWithAgent(agentId, message)
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
-      logger.error(`sendMessage unexpected error:`, msg)
+      logger.error(`sendMessage failed: ${msg}`)
       return `抱歉，发送消息失败: ${msg}`
     }
   }
 
-  /**
-   * 从混合输出中提取 JSON 数组/对象
-   */
-  private extractJSON(text: string): string | null {
-    // 先找 `[` 或 `{` 开头到对应的 `]` 或 `}`
-    // 兼容 stdout 中混有 stderr 插件警告的情况
-    const patterns = [
-      /^\s*\{[\s\S]*?\}\s*/m,    // JSON object
-      /^\s*\[[\s\S]*?\]\s*/m     // JSON array
-    ]
-    for (const p of patterns) {
-      const match = text.match(p)
-      if (match) {
-        try {
-          JSON.parse(match[0].trim())
-          return match[0].trim()
-        } catch {}
+  private async _sendMessageWithAgent(agentId: string, message: string, retryWithoutAgent: boolean = true): Promise<string> {
+    return new Promise((resolve) => {
+      const sessionId = crypto.randomUUID()
+      const args = ['agent', '--local', '--json', '--message', message, '--session-id', sessionId]
+      if (agentId && agentId !== 'default') {
+        args.push('--agent', agentId)
       }
+
+      const proc = spawn('openclaw', args, {
+        cwd: this.openclawDir,
+        timeout: 120000,
+        stdio: ['pipe', 'pipe', 'pipe']
+      })
+
+      let stdout = ''
+      let stderr = ''
+
+      proc.stdout.on('data', (data: Buffer) => {
+        stdout += data.toString()
+      })
+
+      proc.stderr.on('data', (data: Buffer) => {
+        stderr += data.toString()
+      })
+
+      proc.on('close', async (code: number | null) => {
+        if (code === 0 && stdout) {
+          const reply = this._extractReply(stdout)
+          if (reply) {
+            resolve(reply)
+            return
+          }
+          resolve(stdout.trim().length > 5 ? stdout.trim() : 'Agent 已收到消息，但没有返回文本回复。')
+        } else {
+          const errMsg = stderr.trim()
+          // 如果 --agent 方式失败且 agentId 不存在，用 --session-id 重试
+          if (retryWithoutAgent && agentId &&
+              (errMsg.toLowerCase().includes('unknown agent') ||
+               errMsg.toLowerCase().includes('not found') ||
+               code !== 0 && !agentId)) {
+            logger.warn(`Agent ${agentId} not found via --agent, retrying with --session-id only`)
+            try {
+              const fallback = await this._sendMessageWithAgent('', message, false)
+              resolve(fallback)
+              return
+            } catch {}
+          }
+          // 返回真实错误
+          if (errMsg && errMsg.length > 3) {
+            resolve(`Agent: ${errMsg.replace(/\n/g, ' | ').substring(0, 500)}`)
+          } else {
+            logger.warn(`openclaw agent exit code=${code}, stderr=${stderr}`)
+            resolve(`Agent 当前不可用（退出码 ${code}），请稍后重试。`)
+          }
+        }
+      })
+
+      proc.on('error', (err: Error) => {
+        logger.error(`Failed to spawn openclaw agent:`, err)
+        resolve(`无法连接到 Agent: ${err.message}`)
+      })
+    })
+  }
+
+  /**
+   * 从 stdout 中提取 JSON 回复文本
+   */
+  private _extractReply(stdout: string): string | null {
+    const cleanStdout = this.extractJSON(stdout)
+    if (cleanStdout) {
+      try {
+        const result = JSON.parse(cleanStdout)
+        const reply = result.response || result.reply || result.text || result.content || ''
+        if (reply) return reply
+      } catch {}
     }
     return null
   }
