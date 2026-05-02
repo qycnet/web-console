@@ -20,6 +20,7 @@ import usersRoutes from './routes/users.js'
 import monitorRoutes from './routes/monitor.js'
 import alertsRoutes from './routes/alerts.js'
 import devicesRoutes from './routes/devices.js'
+import tasksRoutes from './routes/tasks.js'
 
 config()
 
@@ -84,6 +85,7 @@ app.use('/api/users', usersRoutes)
 app.use('/api/monitor', monitorRoutes)
 app.use('/api/alerts', alertsRoutes)
 app.use('/api/devices', devicesRoutes)
+app.use('/api/tasks', tasksRoutes)
 
 // Health check
 app.get('/api/health', async (req, res) => {
@@ -212,6 +214,29 @@ async function init() {
     // Initialize device service
     await deviceService.init()
     logger.info('Device service initialized')
+
+    // Initialize task service
+    taskService.startCleanup()
+
+    // Register task runners for heavy CLI operations
+    taskService.onTask('agent:create', async (_task, payload: any) => {
+      const { name, model, workspace, persona } = payload
+      const result = await openclawService.createAgent(name, { model, workspace, persona })
+      return result
+    })
+
+    taskService.onTask('agent:update', async (_task, payload: any) => {
+      const { agentId, updates } = payload
+      await openclawService.updateAgent(agentId, updates)
+      return { message: 'Agent 已更新' }
+    })
+
+    taskService.onTask('agent:delete', async (_task, payload: any) => {
+      const { agentId } = payload
+      await openclawService.deleteAgent(agentId)
+      return { message: 'Agent 已删除' }
+    })
+    logger.info('Task service initialized')
 
     // Agent monitoring
     openclawService.monitorAgents()

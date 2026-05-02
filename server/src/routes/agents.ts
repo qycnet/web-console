@@ -1,6 +1,7 @@
 import { Router, Response, Request } from 'express'
 import { authMiddleware, requireRole, auditLog } from '../middleware/auth.js'
 import { openclawService } from '../services/openclaw-service.js'
+import { taskService } from '../services/task-service.js'
 import { logger } from '../utils/logger.js'
 
 const router = Router()
@@ -181,7 +182,7 @@ router.get('/:agentId/stats', async (req: Request, res: Response) => {
 
 /**
  * POST /api/agents
- * 创建新 Agent
+ * 创建新 Agent（异步任务 + 轮询）
  */
 router.post('/',
   requireRole('admin'),
@@ -192,19 +193,19 @@ router.post('/',
       if (!name) {
         return res.status(400).json({ error: 'Agent 名称不能为空' })
       }
-      const result = await openclawService.createAgent(name, { model, workspace, persona })
-      logger.info(`Agent created: ${result.id} (${name})`)
-      res.json(result)
+      const taskId = taskService.submit('agent:create', { name, model, workspace, persona })
+      logger.info(`Agent create task submitted: ${taskId}`)
+      res.status(202).json({ taskId, message: 'Agent 创建任务已提交' })
     } catch (error) {
-      logger.error('Failed to create agent:', error)
-      res.status(500).json({ error: '创建 Agent 失败' })
+      logger.error('Failed to submit agent create task:', error)
+      res.status(500).json({ error: '提交创建任务失败' })
     }
   }
 )
 
 /**
  * PUT /api/agents/:agentId
- * 更新 Agent 身份信息
+ * 更新 Agent 身份信息（异步任务 + 轮询）
  */
 router.put('/:agentId',
   requireRole('admin'),
@@ -212,31 +213,34 @@ router.put('/:agentId',
   async (req: Request, res: Response) => {
     try {
       const { name, model, persona, emoji, avatar, theme } = req.body
-      await openclawService.updateAgent(req.params.agentId, { name, model, persona, emoji, avatar, theme })
-      logger.info(`Agent updated: ${req.params.agentId}`)
-      res.json({ message: 'Agent 已更新' })
+      const taskId = taskService.submit('agent:update', {
+        agentId: req.params.agentId,
+        updates: { name, model, persona, emoji, avatar, theme }
+      })
+      logger.info(`Agent update task submitted: ${taskId}`)
+      res.status(202).json({ taskId, message: 'Agent 更新任务已提交' })
     } catch (error) {
-      logger.error('Failed to update agent:', error)
-      res.status(500).json({ error: '更新 Agent 失败' })
+      logger.error('Failed to submit agent update task:', error)
+      res.status(500).json({ error: '提交更新任务失败' })
     }
   }
 )
 
 /**
  * DELETE /api/agents/:agentId
- * 删除 Agent
+ * 删除 Agent（异步任务 + 轮询）
  */
 router.delete('/:agentId',
   requireRole('admin'),
   auditLog('agent:delete'),
   async (req: Request, res: Response) => {
     try {
-      await openclawService.deleteAgent(req.params.agentId)
-      logger.info(`Agent deleted: ${req.params.agentId}`)
-      res.json({ message: 'Agent 已删除' })
+      const taskId = taskService.submit('agent:delete', { agentId: req.params.agentId })
+      logger.info(`Agent delete task submitted: ${taskId}`)
+      res.status(202).json({ taskId, message: 'Agent 删除任务已提交' })
     } catch (error) {
-      logger.error('Failed to delete agent:', error)
-      res.status(500).json({ error: '删除 Agent 失败' })
+      logger.error('Failed to submit agent delete task:', error)
+      res.status(500).json({ error: '提交删除任务失败' })
     }
   }
 )
