@@ -17,10 +17,11 @@ OpenClaw 的现代化 Web 管理界面，提供配置管理、文件操作、技
 | ⚙️ **配置管理** | 可视化编辑、JSON 模式、热重载、备份恢复、字段加密 |
 | 📁 **文件管理** | 在线浏览、Monaco 编辑器、上传下载、安全路径检查 |
 | 🎯 **技能中心** | 技能市场、一键安装/卸载、中文支持、分类搜索、真实安装/卸载 API |
-| 🤖 **Agent 管理** | 列表查看、启停控制、实时监控、SSE 流式对话（打字机效果） |
+| 🤖 **Agent 管理** | 列表查看、启停控制、管理面板、SSE 流式对话（打字机效果，首字 < 1s） |
 | 🧵 **会话管理** | 历史会话 SQLite 持久化、会话切换、新会话/删除会话 |
 | 🔍 **对话搜索** | 会话内按关键词搜索历史消息 |
 | 📥 **对话导出** | 支持 JSON / Markdown 格式导出完整对话 |
+| ⚡ **异步任务** | Agent 创建/编辑/删除异步执行（2 秒轮询，后台完成后自动刷新） |
 | 📊 **系统监控** | CPU/内存/磁盘、进程管理、实时日志推送 |
 | 📝 **代码编辑** | Monaco Editor、语法高亮、多语言支持 |
 | 🚨 **告警管理** | 告警规则、条件引擎、等级设置、事件追溯 |
@@ -44,7 +45,16 @@ OpenClaw 的现代化 Web 管理界面，提供配置管理、文件操作、技
 - ✅ 配置热重载（SIGHUP）
 - ✅ Agent 启停控制
 - ✅ Agent 状态监控
-- ✅ 技能安装/卸载
+- ✅ SSE 流式对话（绕过 CLI，直调 LLM API，首字 < 1s）
+- ✅ 技能安装/卸载（真实 API 对接）
+- ✅ 异步任务机制（创建/编辑/删除不阻塞）
+
+## 🔌 新增依赖
+
+| 依赖 | 版本 | 用途 |
+|------|------|------|
+| `better-sqlite3` | ^9.4.3 | 会话 & 消息持久化 |
+| `socket.io` | ^4.7.4 | WebSocket 实时事件推送 |
 
 ## 🛠 技术栈
 
@@ -116,30 +126,41 @@ npm start
 
 ```
 web-console/
-├── client/                    # 前端代码
+├── client/                    # 前端代码（Vue 3 + Naive UI）
 │   ├── src/
-│   │   ├── views/            # 页面组件
-│   │   ├── components/       # 通用组件
-│   │   ├── stores/           # Pinia 状态管理
+│   │   ├── views/            # 页面组件（Agent/Config/Files/Login/Skills...）
+│   │   ├── components/       # 通用组件（MonacoEditor, ConfigSectionCollection）
+│   │   ├── stores/           # Pinia 状态管理（theme, user）
 │   │   ├── router/           # 路由配置
 │   │   ├── api/              # API 接口封装
-│   │   ├── composables/      # 组合式函数
+│   │   ├── composables/      # 组合式函数（useWebSocket）
 │   │   ├── types/            # 类型声明
-│   │   └── assets/           # 静态资源
+│   │   ├── utils/            # 工具函数（errorHandler）
+│   │   └── assets/           # 静态资源（logo.svg）
 │   ├── App.vue               # 根组件
 │   └── main.ts               # 入口文件
-├── server/                    # 后端代码
+├── server/                    # 后端代码（Express + SQLite + Socket.IO）
 │   ├── src/
-│   │   ├── index.ts          # 服务入口
-│   │   ├── routes/           # API 路由
+│   │   ├── index.ts          # 服务入口 + WebSocket 初始化
+│   │   ├── routes/           # API 路由（auth/users/config/files/skills/agents/tasks/monitor/devices）
 │   │   ├── services/         # 核心服务
-│   │   ├── middleware/       # 中间件
-│   │   └── utils/            # 工具函数
+│   │   │   ├── database.ts      # SQLite 数据库（users/settings/sessions/messages）
+│   │   │   ├── deepseek-service.ts  # **流式对话引擎（SSE，直调 LLM API）**
+│   │   │   ├── openclaw-service.ts  # OpenClaw CLI 封装 + Agent CRUD
+│   │   │   ├── skill-service.ts     # 技能安装/卸载/搜索
+│   │   │   ├── task-service.ts      # 异步任务管理 + 轮询
+│   │   │   ├── alert-service.ts     # 告警规则引擎
+│   │   │   ├── device-service.ts    # 设备管理
+│   │   │   ├── encryption-service.ts# AES-256-GCM 加密
+│   │   │   └── user-service.ts      # 用户管理
+│   │   ├── middleware/       # 中间件（auth, ws-auth）
+│   │   └── utils/            # 工具函数（jwt-secret, logger）
 │   └── tests/                # 后端测试
 ├── docs/                     # 文档
 │   ├── requirements.md       # 需求文档
-│   ├── api.md                # API 文档
+│   ├── api.md                # API 文档（详细）
 │   └── deployment.md         # 部署文档
+├── .env.example              # 环境变量示例（含 DEEPSEEK_API_KEY）
 ├── package.json              # 项目配置
 └── README.md                 # 本文件
 ```
@@ -181,8 +202,13 @@ cp .env.example .env
 | `ADMIN_PASSWORD` | 初始管理员密码 | 随机生成（8位hex） | ❌ |
 | `OPENCLAW_DIR` | OpenClaw 目录 | `~/.openclaw` | ❌ |
 | `LOG_LEVEL` | 日志级别 | `info` | ❌ |
+| `DEEPSEEK_API_KEY` | DeepSeek API Key（流式对话用） | — | ❌ |
+| `<PROVIDER>_API_KEY` | 其他 Provider 的 API Key（如 `OPENAI_API_KEY`） | — | ❌ |
 
 > ⚠️ **必须设置 JWT_SECRET 环境变量**，否则服务启动失败。
+> 
+> ⚡ 流式对话需要配置对应 LLM 的 API Key。默认识别 `DEEPSEEK_API_KEY`（对应 deepseek provider），
+> 也支持 `OPENAI_API_KEY`、`SILICONFLOW_API_KEY` 等。如果同时配置了多个，在 Agent 编辑面板选择 Provider 即可切换。
 
 ## 🚀 部署
 
@@ -226,16 +252,24 @@ pm2 startup
 |------|------|------|
 | GET | `/api/agents` | Agent 列表（从 CLI/状态文件/配置文件三级获取）|
 | GET | `/api/agents/models` | 可用模型列表（从 OpenClaw 配置动态读取）|
-| GET | `/api/agents/:id` | Agent 详情 |
-| POST | `/api/agents` | 创建 Agent（同时写入 workspace 人设文件）|
-| PUT | `/api/agents/:id` | 更新 Agent（名称/模型/人设/Emoji/主题）|
+| GET | `/api/agents/:id` | Agent 详情（含 provider/temperature/maxTokens/avatar 等）|
+| POST | `/api/agents` | 创建 Agent（写入 workspace 人设文件 + 注册 CLI）|
+| PUT | `/api/agents/:id` | 更新 Agent（名称/模型/人设/Provider/温度/Max Tokens/描述/头像）|
 | DELETE | `/api/agents/:id` | 删除 Agent（清理状态 + workspace 目录）|
 | POST | `/api/agents/:id/start` | 启动 Agent |
 | POST | `/api/agents/:id/stop` | 停止 Agent |
 | POST | `/api/agents/:id/restart` | 重启 Agent |
-| POST | `/api/agents/:id/chat` | 与 Agent 对话（--local --session-id 方式）|
+| POST | `/api/agents/:id/chat` | 与 Agent 对话（旧接口，CLI 模式）|
+| **GET** | `/api/agents/:id/chat/stream` | **流式对话（新）— SSE 打字机效果，首字 < 1s** |
 | GET | `/api/agents/:id/logs` | 获取 Agent 日志 |
-| GET | `/api/agents/:id/stats` | 获取 Agent 统计信息（基于日志统计）|
+| GET | `/api/agents/:id/stats` | 获取 Agent 统计信息（含 sessionCount/totalMessages/totalTokens）|
+| GET | `/api/agents/:id/sessions` | 获取 Agent 的会话列表 |
+| GET | `/api/agents/:id/sessions/:sid` | 获取会话详情（含消息列表） |
+| POST | `/api/agents/:id/sessions` | 新建会话 |
+| DELETE | `/api/agents/:id/sessions/:sid` | 删除会话（级联删除消息） |
+| GET | `/api/agents/:id/sessions/:sid/search` | 搜索会话中的消息 |
+| GET | `/api/agents/:id/sessions/:sid/export` | 导出会话为 JSON |
+| GET | `/api/agents/:id/sessions/:sid/export/markdown` | 导出会话为 Markdown |
 
 ### 文件 API
 

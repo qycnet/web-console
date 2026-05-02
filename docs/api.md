@@ -720,6 +720,10 @@
 |------|------|------|------|
 | message | string | ✅ | 用户消息内容 |
 | sessionId | string | ❌ | 会话 ID（留空自动创建新会话） |
+| token | string | 🔑 | **JWT Token（EventSource 无法携带 Authorization header，作为 query 参数传入）** |
+
+> ⚠️ **鉴权说明：** 浏览器 `EventSource` API 无法设置自定义请求头（包括 `Authorization: Bearer <token>`），
+> 因此该端点从 URL query 参数 `token` 获取 JWT Token。前端 SDK 已自动处理。`EventSource.onerror` 触发 401 时请检查 token 是否有效。`
 
 **响应格式：** text/event-stream
 
