@@ -394,20 +394,28 @@ class OpenClawService extends EventEmitter {
       })
 
       proc.on('close', async (code: number | null) => {
-        if (code === 0 && stdout) {
-          const reply = this._extractReply(stdout)
+        // 注意：openclaw agent CLI 的 JSON 回复可能输出到 stderr（插件日志也在 stderr）
+        // 需要同时从 stdout 和 stderr 中提取 JSON 回复
+        const combinedOutput = stdout + '\n' + stderr
+        if (code === 0) {
+          const reply = this._extractReply(combinedOutput)
           if (reply) {
             resolve(reply)
             return
           }
-          resolve(stdout.trim().length > 5 ? stdout.trim() : 'Agent 已收到消息，但没有返回文本回复。')
+          // 也尝试纯文本
+          const text = (stdout.trim() || stderr.trim())
+          if (text.length > 5) {
+            resolve(text)
+            return
+          }
+          resolve('Agent 已收到消息，但没有返回文本回复。')
         } else {
-          const errMsg = stderr.trim()
+          const errMsg = stderr.trim() || stdout.trim()
           // 如果 --agent 方式失败且 agentId 不存在，用 --session-id 重试
           if (retryWithoutAgent && agentId &&
               (errMsg.toLowerCase().includes('unknown agent') ||
-               errMsg.toLowerCase().includes('not found') ||
-               code !== 0 && !agentId)) {
+               errMsg.toLowerCase().includes('not found'))) {
             logger.warn(`Agent ${agentId} not found via --agent, retrying with --session-id only`)
             try {
               const fallback = await this._sendMessageWithAgent('', message, false)
@@ -415,8 +423,14 @@ class OpenClawService extends EventEmitter {
               return
             } catch {}
           }
-          // 返回真实错误
+          // 返回真实错误（从 combinedOutput 中提取）
           if (errMsg && errMsg.length > 3) {
+            // 但先检查 stderr 中是否包含真正的回复 JSON（非错误）
+            const reply = this._extractReply(combinedOutput)
+            if (reply) {
+              resolve(reply)
+              return
+            }
             resolve(`Agent: ${errMsg.replace(/\n/g, ' | ').substring(0, 500)}`)
           } else {
             logger.warn(`openclaw agent exit code=${code}, stderr=${stderr}`)
@@ -433,16 +447,23 @@ class OpenClawService extends EventEmitter {
   }
 
   /**
-   * 从 stdout 中提取 JSON 回复文本
+   * 从混合输出（stdout + stderr）中提取 JSON 回复文本
    */
-  private _extractReply(stdout: string): string | null {
-    const cleanStdout = this.extractJSON(stdout)
-    if (cleanStdout) {
-      try {
-        const result = JSON.parse(cleanStdout)
-        const reply = result.response || result.reply || result.text || result.content || ''
-        if (reply) return reply
-      } catch {}
+  private _extractReply(output: string): string | null {
+    // 兼容 stdout 中混有插件警告的情况
+    const patterns = [
+      /^\s*\{[\s\S]*?\}\s*/m,
+      /^\s*\[[\s\S]*?\]\s*/m
+    ]
+    for (const p of patterns) {
+      const match = output.match(p)
+      if (match) {
+        try {
+          const result = JSON.parse(match[0].trim())
+          const reply = result.response || result.reply || result.text || result.content || ''
+          if (reply) return reply
+        } catch {}
+      }
     }
     return null
   }
