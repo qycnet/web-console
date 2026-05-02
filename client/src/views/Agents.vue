@@ -316,6 +316,7 @@ const currentSessionId = ref('')
 const currentSessionTitle = ref('')
 const currentReply = ref('')
 const isStreaming = ref(false)
+const sessions = ref<any[]>([])
 const showSearch = ref(false)
 const searchKeyword = ref('')
 const searchResults = ref<any[]>([])
@@ -861,6 +862,12 @@ async function handleSendMessage() {
   chatInput.value = ''
   isStreaming.value = true
   currentReply.value = ''
+
+  // 关闭旧的 stream 连接
+  if (streamSource) {
+    streamSource.close()
+    streamSource = null
+  }
 
   // 加入临时 AI 消息占位（打字机效果）
   const msgId = Date.now() + 1
