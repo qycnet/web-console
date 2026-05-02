@@ -70,6 +70,12 @@ const routes: RouteRecordRaw[] = [
         name: 'Devices',
         component: () => import('@/views/Devices.vue'),
         meta: { title: '设备管理', icon: 'phone-portrait', roles: ['admin'] }
+      },
+      {
+        path: 'providers',
+        name: 'Providers',
+        component: () => import('@/views/Providers.vue'),
+        meta: { title: '供应商管理', icon: 'cloud', roles: ['admin'] }
       }
     ]
   }

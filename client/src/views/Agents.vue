@@ -147,16 +147,13 @@
           <n-input v-model:value="createForm.name" placeholder="Agent 名称（如 zhangsan）" />
         </n-form-item>
         <n-form-item label="模型">
-          <n-select v-model:value="createForm.model" :options="modelOptions" placeholder="选择模型（可选）" />
+          <n-select v-model:value="createForm.model" :options="createForm.provider ? currentProviderModels : modelOptions" placeholder="选择模型" />
         </n-form-item>
         <n-form-item label="人设">
           <n-input v-model:value="createForm.persona" type="textarea" :rows="4" placeholder="角色的 AGENTS.md 内容，例如：&#10;你是张三，一个幽默的脱口秀演员，&#10;擅长用段子回答各种问题。" />
         </n-form-item>
-        <n-form-item label="模型">
-          <n-select v-model:value="createForm.model" :options="modelOptions" placeholder="选择模型（可选）" />
-        </n-form-item>
         <n-form-item label="Provider">
-          <n-select v-model:value="createForm.provider" :options="providerOptions" placeholder="模型提供商" />
+          <n-select v-model:value="createForm.provider" :options="providerOptions" placeholder="模型提供商" @update:value="loadProviderModels(createForm.provider)" />
         </n-form-item>
         <n-form-item label="温度">
           <n-input-number v-model:value="createForm.temperature" :min="0" :max="2" :step="0.1" placeholder="0.7" style="width: 120px" />
@@ -186,10 +183,10 @@
           <n-input v-model:value="editForm.name" placeholder="Agent 名称" />
         </n-form-item>
         <n-form-item label="模型">
-          <n-select v-model:value="editForm.model" :options="modelOptions" placeholder="修改模型（可选）" />
+          <n-select v-model:value="editForm.model" :options="editForm.provider ? editProviderModels : modelOptions" placeholder="修改模型" />
         </n-form-item>
         <n-form-item label="Provider">
-          <n-select v-model:value="editForm.provider" :options="providerOptions" placeholder="模型提供商" />
+          <n-select v-model:value="editForm.provider" :options="providerOptions" placeholder="模型提供商" @update:value="loadProviderModels(editForm.provider)" />
         </n-form-item>
         <n-form-item label="温度">
           <n-input-number v-model:value="editForm.temperature" :min="0" :max="2" :step="0.1" placeholder="0.7" style="width: 120px" />
@@ -341,19 +338,29 @@ const modelOptions = ref<{ label: string; value: string }[]>(
   JSON.parse(JSON.stringify([{ label: 'default', value: 'default' }]))
 )
 
-const providerOptions = ref([
-  { label: 'DeepSeek', value: 'deepseek' },
-  { label: 'OpenAI', value: 'openai' },
-  { label: 'SiliconFlow', value: 'siliconflow' },
-  { label: '阿里云通义千问', value: 'aliyun' },
-  { label: '智谱', value: 'zhipu' },
-  { label: '月之暗面 Moonshot', value: 'moonshot' },
-  { label: '百川', value: 'baichuan' },
-  { label: '火山引擎', value: 'volc' },
-  { label: '百度文心', value: 'baidu' }
-])
+const providerOptions = ref<{ label: string; value: string }[]>([])
 
 const availableSkills = ref<{ label: string; value: string }[]>([])
+
+// 选中供应商后，动态加载该供应商下的模型列表
+const providerModelsCache = ref<Record<string, { label: string; value: string }[]>>({})
+
+// 根据当前选中的供应商显示对应的模型列表
+const currentProviderModels = computed(() => {
+  const selectedProvider = createForm.value.provider
+  if (selectedProvider && providerModelsCache.value[selectedProvider]) {
+    return providerModelsCache.value[selectedProvider]
+  }
+  return modelOptions.value
+})
+
+const editProviderModels = computed(() => {
+  const selectedProvider = editForm.value.provider
+  if (selectedProvider && providerModelsCache.value[selectedProvider]) {
+    return providerModelsCache.value[selectedProvider]
+  }
+  return modelOptions.value
+})
 
 // ====== 异步任务状态管理 ======
 const pendingTasks = ref<Map<string, PendingOp>>(new Map())
@@ -524,6 +531,7 @@ async function loadAgents() {
 
 async function loadModels() {
   try {
+    // 加载模型列表
     const models = await api.agents.models()
     modelOptions.value = [
       { label: 'default', value: 'default' },
@@ -532,7 +540,44 @@ async function loadModels() {
         value: m.id
       }))
     ]
+
+    // 加载供应商列表（动态，替代硬编码 providerOptions）
+    try {
+      const providers = await api.config.providers.list()
+      providerOptions.value = providers.map((p: any) => ({
+        label: p.label || p.name,
+        value: p.name
+      }))
+      // 缓存每个供应商的模型列表
+      for (const p of providers) {
+        if (Array.isArray(p.models) && p.models.length > 0) {
+          providerModelsCache.value[p.name] = p.models.map((m: any) => ({
+            label: m.name || m.id,
+            value: m.id
+          }))
+        }
+      }
+    } catch {
+      // 如果 API 不可用（config.json 还没 providers），保留空列表
+    }
   } catch {}
+}
+
+/**
+ * 加载指定供应商的模型列表，缓存后用于动态选项
+ */
+async function loadProviderModels(provider: string) {
+  if (!provider) return
+  if (providerModelsCache.value[provider]) return // 已缓存
+  try {
+    const models = await api.config.providers.listModels(provider)
+    providerModelsCache.value[provider] = models.map((m: any) => ({
+      label: m.name || m.id,
+      value: m.id
+    }))
+  } catch {
+    // 如果该供应商没有独立模型列表，使用全量模型
+  }
 }
 
 async function loadAvailableSkills() {

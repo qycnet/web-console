@@ -62,7 +62,44 @@ export const api = {
     update: (key: string, value: any) => instance.put(`/config/${key}`, { value }),
     reload: () => instance.post('/config/reload'),
     backup: () => instance.get('/config/backup'),
-    restore: (backupId: string) => instance.post(`/config/restore/${backupId}`)
+    restore: (backupId: string) => instance.post(`/config/restore/${backupId}`),
+
+    // ====== 供应商管理（P2 新增） ======
+    providers: {
+      list: () => instance.get('/config/providers'),
+      get: (name: string) => instance.get(`/config/providers/${name}`),
+      create: (name: string, options?: {
+        apiKey?: string
+        baseUrl?: string
+        defaultModel?: string
+        defaultTemperature?: number
+        defaultMaxTokens?: number
+      }) => instance.post('/config/providers', { name, ...options }),
+      update: (name: string, updates: {
+        apiKey?: string
+        baseUrl?: string
+        defaultModel?: string
+        defaultTemperature?: number
+        defaultMaxTokens?: number
+        models?: Array<{ id: string; name?: string }>
+      }) => instance.put(`/config/providers/${name}`, updates),
+      delete: (name: string) => instance.delete(`/config/providers/${name}`),
+
+      // ====== 模型管理 ======
+      addModel: (providerName: string, id: string, name?: string) =>
+        instance.post(`/config/providers/${providerName}/models`, { id, name }),
+      removeModel: (providerName: string, modelId: string) =>
+        instance.delete(`/config/providers/${providerName}/models/${modelId}`),
+      setDefaultModel: (providerName: string, modelId: string) =>
+        instance.put(`/config/providers/${providerName}/models/${modelId}/default`),
+      listModels: (providerName: string) =>
+        instance.get(`/config/providers/${providerName}/models`),
+    },
+
+    // ====== 全量模型 ======
+    models: {
+      list: () => instance.get('/config/models'),
+    }
   },
 
   files: {
