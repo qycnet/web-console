@@ -188,11 +188,11 @@ router.post('/',
   auditLog('agent:create'),
   async (req: Request, res: Response) => {
     try {
-      const { name, model, workspace } = req.body
+      const { name, model, workspace, persona } = req.body
       if (!name) {
         return res.status(400).json({ error: 'Agent 名称不能为空' })
       }
-      const result = await openclawService.createAgent(name, { model, workspace })
+      const result = await openclawService.createAgent(name, { model, workspace, persona })
       logger.info(`Agent created: ${result.id} (${name})`)
       res.json(result)
     } catch (error) {
@@ -211,8 +211,8 @@ router.put('/:agentId',
   auditLog('agent:update'),
   async (req: Request, res: Response) => {
     try {
-      const { name, emoji, avatar, theme } = req.body
-      await openclawService.updateAgent(req.params.agentId, { name, emoji, avatar, theme })
+      const { name, model, persona, emoji, avatar, theme } = req.body
+      await openclawService.updateAgent(req.params.agentId, { name, model, persona, emoji, avatar, theme })
       logger.info(`Agent updated: ${req.params.agentId}`)
       res.json({ message: 'Agent 已更新' })
     } catch (error) {
