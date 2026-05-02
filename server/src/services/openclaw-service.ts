@@ -201,7 +201,9 @@ class OpenClawService extends EventEmitter {
   /**
    * 通过 CLI 获取真实 Agent 列表
    * 注意: openclaw agents list --json 的 stderr 可能混有插件警告,
-   * 需要从 stdout 中提取 JSON
+   * 导致进程不退出或退出码非0。
+   * 改为：读取到 stdout 中的 [] 或 {} 后立即解析并 resolve，不等 close
+   * 同时保留 3 秒超时兜底
    */
   private async getAgentsFromCLI(): Promise<AgentInfo[]> {
     return new Promise((resolve) => {
@@ -211,21 +213,19 @@ class OpenClawService extends EventEmitter {
       })
 
       let stdout = ''
+      let resolved = false
 
-      proc.stdout.on('data', (data: Buffer) => {
-        stdout += data.toString()
-      })
-
-      proc.on('close', (code: number | null) => {
-        if (code === 0) {
-          // 从 stdout 中尝试提取 JSON（去掉可能混入的 stderr 警告）
-          const jsonMatch = stdout.match(/^\s*\[[\s\S]*\]\s*/m)
-          const jsonStr = jsonMatch ? jsonMatch[0].trim() : stdout.trim()
-          if (jsonStr) {
-            try {
-              const result = JSON.parse(jsonStr)
-              const list = Array.isArray(result) ? result : (result.agents || [result])
-              resolve(list.map((a: any) => ({
+      // 辅助函数：尝试从当前 stdout 中提取 JSON 并 resolve
+      const tryResolve = () => {
+        if (resolved) return
+        const jsonMatch = stdout.match(/^\s*\[[\s\S]*?\]\s*/m)
+        if (jsonMatch) {
+          try {
+            const result = JSON.parse(jsonMatch[0].trim())
+            if (Array.isArray(result)) {
+              resolved = true
+              proc.kill()
+              resolve(result.map((a: any) => ({
                 id: a.id || a.name || 'unknown',
                 name: a.identityName || a.name || a.id || '未知',
                 status: a.status || (a.running ? 'running' : 'stopped'),
@@ -233,16 +233,46 @@ class OpenClawService extends EventEmitter {
                 skills: a.skills || [],
                 createdAt: a.createdAt || ''
               })))
-              return
-            } catch (e) {
-              logger.warn('Failed to parse agents list JSON:', String(e))
             }
-          }
+          } catch {}
         }
-        resolve([])
+      }
+
+      proc.stdout.on('data', (data: Buffer) => {
+        stdout += data.toString()
+        tryResolve()
       })
 
-      proc.on('error', () => resolve([]))
+      // 3 秒超时：最多等 3 秒，解析已有的 stdout
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          tryResolve()
+          if (!resolved) {
+            resolved = true
+            proc.kill()
+            resolve([])
+          }
+        }
+      }, 3000)
+
+      proc.on('close', () => {
+        clearTimeout(timeout)
+        if (!resolved) {
+          tryResolve()
+          if (!resolved) {
+            resolved = true
+            resolve([])
+          }
+        }
+      })
+
+      proc.on('error', () => {
+        clearTimeout(timeout)
+        if (!resolved) {
+          resolved = true
+          resolve([])
+        }
+      })
     })
   }
 
