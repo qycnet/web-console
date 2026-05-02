@@ -365,7 +365,7 @@ router.post('/chunk/merge', async (req, res: Response) => {
       writeStream.write(data)
     }
     await new Promise<void>((resolve, reject) => {
-      writeStream.end((err) => err ? reject(err) : resolve())
+      writeStream.end((err: Error | null) => err ? reject(err) : resolve())
     })
 
     // 清理临时分片
