@@ -19,13 +19,27 @@ const router = Router()
 // 从 query 参数 token 鉴权（替代 router-level authMiddleware）
 // ============================================================================
 router.get('/:agentId/chat/stream', async (req: Request, res: Response) => {
-  // 从 query 参数获取 token 鉴权（EventSource 无法带自定义 Header）
+  // 鉴权：优先读取 Authorization header，fallback 到 query token
+  //（EventSource 无法携带自定义 Header，因此 query token 作为备选）
   try {
-    const token = req.query.token as string
+    let token: string | undefined
+
+    // ① 尝试从 Authorization header 读取
+    const authHeader = req.headers.authorization
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7)
+    }
+
+    // ② 如果没有 header token，从 query 参数读取（EventSource 场景）
+    if (!token) {
+      token = req.query.token as string | undefined
+    }
+
     if (!token) {
       res.status(401).json({ error: '未授权访问' })
       return
     }
+
     const decoded = jwt.verify(token, getJwtSecret()) as any
     req.user = { userId: decoded.userId, role: decoded.role }
   } catch {
