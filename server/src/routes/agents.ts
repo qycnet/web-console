@@ -6,6 +6,8 @@ import { database } from '../services/database.js'
 import { chatStream, generateSessionId, type AgentChatConfig } from '../services/deepseek-service.js'
 import { logger } from '../utils/logger.js'
 import crypto from 'crypto'
+import jwt from 'jsonwebtoken'
+import { getJwtSecret } from '../utils/jwt-secret.js'
 
 const router = Router()
 
@@ -290,8 +292,6 @@ router.get('/:agentId/chat/stream', async (req: Request, res: Response) => {
       res.status(401).json({ error: '未授权访问' })
       return
     }
-    const { default: jwt } = await import('jsonwebtoken')
-    const { getJwtSecret } = await import('../utils/jwt-secret.js')
     const decoded = jwt.verify(token, getJwtSecret()) as any
     req.user = { userId: decoded.userId, role: decoded.role }
   } catch {
