@@ -188,67 +188,76 @@ class OpenClawService extends EventEmitter {
   }
 
   // ==========================================================================
-  // Agent 列表（从注册表 + CLI 真实数据合并）
+  // Agent 列表（从 config.json 的 agents.list + registry 合并）
   // ==========================================================================
   async getAgents(): Promise<AgentInfo[]> {
     try {
-      // ① 从注册表 + CLI 合并得到完整列表
-      const [cliAgents, registry] = await Promise.all([
-        this.getAgentsFromCLIWithTimeout(),
-        this.getRegistry()
-      ])
+      const config = await this.getConfig()
+      const registry = await this.getRegistry()
+      const list: any[] = config?.agents?.list || []
 
-      const seen = new Set<string>()
       const result: AgentInfo[] = []
 
-      // 先加 CLI 返回的真实 Agent（排除 main 和 defaults）
-      for (const a of cliAgents) {
+      for (const a of list) {
         if (a.id === 'main' || a.id === 'default' || a.id === 'defaults') continue
-        seen.add(a.id)
         const reg = registry[a.id]
+
+        // 从 model 字段解析 provider（格式: provider/model，如 deepseek/deepseek-chat）
+        const model = a.model || reg?.model || config?.agents?.defaults?.model?.primary || 'default'
+        let provider = reg?.provider || a.provider || ''
+        if (!provider && model.includes('/')) {
+          provider = model.split('/')[0]
+        }
+
         result.push({
-          ...a,
-          status: a.status || 'stopped',
-          skills: a.skills || [],
+          id: a.id || '',
+          name: a.name || a.id || reg?.name || '未知',
+          status: 'stopped',                 // 从 config.json 读不到实时状态，默认 stopped
+          model,
+          skills: a.skills || reg?.skills || [],
           workspace: reg?.workspace,
-          createdAt: a.createdAt || reg?.createdAt,
+          createdAt: a.createdAt || reg?.createdAt || '',
           updatedAt: reg?.updatedAt,
           description: reg?.description || a.description,
-          persona: reg?.persona || a.persona,
-          provider: reg?.provider,
-          apiKey: reg?.apiKey,
-          temperature: reg?.temperature,
-          maxTokens: reg?.maxTokens,
+          persona: reg?.persona || a.persona || '',
+          provider,
+          apiKey: reg?.apiKey || a.apiKey || '',
+          temperature: reg?.temperature ?? a.temperature ?? 0.7,
+          maxTokens: reg?.maxTokens ?? a.maxTokens ?? 4096,
           contextWindow: reg?.contextWindow,
           avatar: reg?.avatar,
           theme: reg?.theme
         })
       }
 
-      // 再加注册表中存在但 CLI 未返回的 Agent
+      // 补充 registry 中有但 config agents.list 中没有的 Agent
+      const listedIds = new Set(list.map((a: any) => a.id))
       for (const [id, reg] of Object.entries(registry)) {
-        if (!seen.has(id)) {
-          seen.add(id)
-          result.push({
-            id,
-            name: reg.name || id,
-            status: 'stopped',
-            model: reg.model || 'default',
-            skills: reg.skills || [],
-            workspace: reg.workspace,
-            createdAt: reg.createdAt,
-            updatedAt: reg.updatedAt,
-            description: reg.description,
-            persona: reg.persona,
-            provider: reg.provider,
-            apiKey: reg.apiKey,
-            temperature: reg.temperature,
-            maxTokens: reg.maxTokens,
-            contextWindow: reg.contextWindow,
-            avatar: reg.avatar,
-            theme: reg.theme
-          })
+        if (listedIds.has(id)) continue
+        const model = reg.model || config?.agents?.defaults?.model?.primary || 'default'
+        let provider = reg.provider || ''
+        if (!provider && model.includes('/')) {
+          provider = model.split('/')[0]
         }
+        result.push({
+          id,
+          name: reg.name || id,
+          status: 'stopped',
+          model,
+          skills: reg.skills || [],
+          workspace: reg.workspace,
+          createdAt: reg.createdAt,
+          updatedAt: reg.updatedAt,
+          description: reg.description,
+          persona: reg.persona || '',
+          provider,
+          apiKey: reg.apiKey || '',
+          temperature: reg.temperature ?? 0.7,
+          maxTokens: reg.maxTokens ?? 4096,
+          contextWindow: reg.contextWindow,
+          avatar: reg.avatar,
+          theme: reg.theme
+        })
       }
 
       return result
@@ -256,66 +265,6 @@ class OpenClawService extends EventEmitter {
       logger.error('Failed to get agents:', error)
       return []
     }
-  }
-
-  /**
-   * 从 CLI 获取 Agent 列表（流式解析 + 3 秒超时）
-   */
-  private async getAgentsFromCLIWithTimeout(): Promise<AgentInfo[]> {
-    try {
-      const agents = await Promise.race([
-        this.getAgentsFromCLI(),
-        new Promise<AgentInfo[]>((_, reject) =>
-          setTimeout(() => reject(new Error('CLI timeout')), 10000)
-        )
-      ])
-      return agents
-    } catch {
-      return []
-    }
-  }
-
-  private async getAgentsFromCLI(): Promise<AgentInfo[]> {
-    return new Promise((resolve) => {
-      const proc = spawn('openclaw', ['agents', 'list', '--json'], {
-        cwd: this.openclawDir,
-        stdio: ['pipe', 'pipe', 'pipe']
-      })
-
-      let stdout = ''
-      let resolved = false
-
-      const tryResolve = () => {
-        if (resolved) return
-        const jsonMatch = stdout.match(/^\s*\[[\s\S]*?\]\s*/m)
-        if (jsonMatch) {
-          try {
-            const result = JSON.parse(jsonMatch[0].trim())
-            if (Array.isArray(result)) {
-              resolved = true
-              proc.kill()
-              resolve(result.map((a: any) => ({
-                id: a.id || a.name || 'unknown',
-                name: a.identityName || a.name || a.id || '未知',
-                status: a.status || (a.running ? 'running' : 'stopped'),
-                model: a.model || 'default',
-                skills: a.skills || [],
-                createdAt: a.createdAt || ''
-              })))
-            }
-          } catch {}
-        }
-      }
-
-      proc.stdout.on('data', (data: Buffer) => { stdout += data.toString(); tryResolve() })
-
-      const timeout = setTimeout(() => {
-        if (!resolved) { tryResolve(); if (!resolved) { resolved = true; proc.kill(); resolve([]) } }
-      }, 3000)
-
-      proc.on('close', () => { clearTimeout(timeout); if (!resolved) { tryResolve(); if (!resolved) { resolved = true; resolve([]) } } })
-      proc.on('error', () => { clearTimeout(timeout); if (!resolved) { resolved = true; resolve([]) } })
-    })
   }
 
   async getAgent(agentId: string): Promise<AgentInfo | null> {
@@ -645,11 +594,6 @@ class OpenClawService extends EventEmitter {
       logger.error('Failed to get available models:', error)
       return []
     }
-  }
-
-  async getAgentLogsFromCLI(agentId: string, limit: number = 100): Promise<string[]> {
-    // 预留：可通过 openclaw agent logs 获取
-    return this.getAgentLogs(agentId, limit)
   }
 
   async monitorAgents(): Promise<void> {
