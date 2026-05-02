@@ -237,7 +237,7 @@ router.get('/:agentId/logs', async (req: Request, res: Response) => {
     logger.error('Failed to get agent logs:', error)
     res.status(500).json({ error: '获取日志失败' })
   }
-}
+})
 
 /**
  * GET /api/agents/:agentId/stats
