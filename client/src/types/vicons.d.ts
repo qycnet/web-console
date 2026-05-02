@@ -27,4 +27,5 @@ declare module '@vicons/ionicons5' {
   export const StopOutline: Component
   export const RefreshOutline: Component
   export const ChatbubbleOutline: Component
+  export const EyeOutline: Component
 }
