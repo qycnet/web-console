@@ -503,6 +503,24 @@ const columns: DataTableColumns<Agent> = [
   }
 ]
 
+function getStatusType(status?: string) {
+  switch (status) {
+    case 'running': return 'success'
+    case 'stopped': return 'default'
+    case 'error': return 'error'
+    default: return 'default'
+  }
+}
+
+function getStatusText(status?: string) {
+  switch (status) {
+    case 'running': return '运行中'
+    case 'stopped': return '已停止'
+    case 'error': return '错误'
+    default: return '未知'
+  }
+}
+
 onMounted(() => {
   loadAgents()
   loadModels()
@@ -686,12 +704,7 @@ function openEditModal() {
     model: selectedAgent.value.model,
     persona: selectedAgent.value.persona || '',
     emoji: '',
-    theme: '',
-    provider: (selectedAgent.value as any)?.provider || '',
-    temperature: (selectedAgent.value as any)?.temperature ?? null,
-    maxTokens: (selectedAgent.value as any)?.maxTokens ?? null,
-    description: selectedAgent.value.description || '',
-    avatar: (selectedAgent.value as any)?.avatar || ''
+    theme: ''
   }
   showEditModal.value = true
 }
