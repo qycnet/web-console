@@ -221,8 +221,8 @@ async function init() {
 
     // Register task runners for heavy CLI operations
     taskService.onTask('agent:create', async (_task, payload: any) => {
-      const { name, model, workspace, persona } = payload
-      const result = await openclawService.createAgent(name, { model, workspace, persona })
+      const { name, model, workspace, persona, description, provider, temperature, maxTokens, avatar, theme } = payload
+      const result = await openclawService.createAgent(name, { model, workspace, persona, description, provider, temperature, maxTokens, avatar, theme })
       return result
     })
 

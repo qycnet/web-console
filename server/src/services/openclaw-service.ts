@@ -17,9 +17,25 @@ export interface AgentInfo {
   cpuUsage?: number
   lastActive?: Date
   createdAt?: string
+  updatedAt?: string
   description?: string
   workspace?: string
   persona?: string
+
+  // === 新字段：模型配置 ===
+  provider?: string         // 'deepseek' | 'openai' | 'cm-plan' | 'siliconflow'
+  apiKey?: string           // 留空使用全局 key
+  temperature?: number      // default: 0.7
+  maxTokens?: number        // default: 4096
+  contextWindow?: number    // 上下文窗口大小
+
+  // === 新字段：展示 ===
+  avatar?: string           // emoji/头像URL
+  theme?: string            // 主题色
+
+  // === 新字段：会话统计 ===
+  sessionCount?: number
+  lastActiveAt?: string
 }
 
 export interface OpenClawConfig {
@@ -33,9 +49,20 @@ export interface OpenClawConfig {
 interface AgentRegistry {
   [agentId: string]: {
     name: string
+    description?: string
+    avatar?: string          // emoji/头像URL
     model: string
+    provider?: string        // 'deepseek' | 'openai' | 'cm-plan'
+    apiKey?: string          // 留空使用全局 key
+    temperature?: number     // default: 0.7
+    maxTokens?: number       // default: 4096
+    contextWindow?: number
+    theme?: string
+    skills?: string[]
     workspace: string
+    persona?: string
     createdAt: string
+    updatedAt?: string
     config: any
   }
 }
@@ -185,7 +212,17 @@ class OpenClawService extends EventEmitter {
           status: a.status || 'stopped',
           skills: a.skills || [],
           workspace: reg?.workspace,
-          createdAt: a.createdAt || reg?.createdAt
+          createdAt: a.createdAt || reg?.createdAt,
+          updatedAt: reg?.updatedAt,
+          description: reg?.description || a.description,
+          persona: reg?.persona || a.persona,
+          provider: reg?.provider,
+          apiKey: reg?.apiKey,
+          temperature: reg?.temperature,
+          maxTokens: reg?.maxTokens,
+          contextWindow: reg?.contextWindow,
+          avatar: reg?.avatar,
+          theme: reg?.theme
         })
       }
 
@@ -198,9 +235,19 @@ class OpenClawService extends EventEmitter {
             name: reg.name || id,
             status: 'stopped',
             model: reg.model || 'default',
-            skills: [],
+            skills: reg.skills || [],
             workspace: reg.workspace,
-            createdAt: reg.createdAt
+            createdAt: reg.createdAt,
+            updatedAt: reg.updatedAt,
+            description: reg.description,
+            persona: reg.persona,
+            provider: reg.provider,
+            apiKey: reg.apiKey,
+            temperature: reg.temperature,
+            maxTokens: reg.maxTokens,
+            contextWindow: reg.contextWindow,
+            avatar: reg.avatar,
+            theme: reg.theme
           })
         }
       }
@@ -292,6 +339,12 @@ class OpenClawService extends EventEmitter {
     model?: string
     workspace?: string
     persona?: string
+    description?: string
+    provider?: string
+    temperature?: number
+    maxTokens?: number
+    avatar?: string
+    theme?: string
   }): Promise<{ id: string; name: string }> {
     const agentId = name.replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase()
 
@@ -319,9 +372,18 @@ class OpenClawService extends EventEmitter {
     const registry = await this.getRegistry()
     registry[agentIdFromCLI] = {
       name,
+      description: options?.description,
+      avatar: options?.avatar,
+      theme: options?.theme,
       model: options?.model || 'default',
+      provider: options?.provider,
+      temperature: options?.temperature,
+      maxTokens: options?.maxTokens,
+      skills: [],
       workspace: workspaceDir,
+      persona: personaContent,
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       config: {}
     }
     await this.saveRegistry(registry)
@@ -341,16 +403,24 @@ class OpenClawService extends EventEmitter {
     avatar?: string
     theme?: string
     model?: string
+    provider?: string
+    temperature?: number
+    maxTokens?: number
+    contextWindow?: number
     persona?: string
+    description?: string
   }): Promise<void> {
     const registry = await this.getRegistry()
     const reg = registry[agentId]
 
-    if (updates.name || updates.emoji || updates.avatar || updates.theme || updates.persona) {
+    if (updates.name || updates.emoji || updates.avatar || updates.theme || updates.persona || updates.description) {
       // 更新 workspace 人设文件
       if (reg?.workspace) {
         if (updates.persona) {
           await fs.writeFile(path.join(reg.workspace, 'AGENTS.md'), updates.persona)
+        }
+        if (updates.description) {
+          await fs.writeFile(path.join(reg.workspace, 'DESCRIPTION.md'), updates.description)
         }
         // 调用 set-identity 重新加载
         const args = ['agents', 'set-identity', '--agent', agentId]
@@ -370,15 +440,22 @@ class OpenClawService extends EventEmitter {
     // 编辑模型 → 直接改 config.json
     if (updates.model) {
       await this._updateAgentInConfig(agentId, { model: updates.model })
-      if (reg) {
-        reg.model = updates.model
-        await this.saveRegistry(registry)
-      }
     }
 
-    // 更新注册表中的名称
-    if (updates.name && reg) {
-      reg.name = updates.name
+    // 更新 registry（保存所有字段）
+    if (reg) {
+      const now = new Date().toISOString()
+      if (updates.name) reg.name = updates.name
+      if (updates.description !== undefined) reg.description = updates.description
+      if (updates.avatar !== undefined) reg.avatar = updates.avatar
+      if (updates.theme !== undefined) reg.theme = updates.theme
+      if (updates.model) reg.model = updates.model
+      if (updates.provider !== undefined) reg.provider = updates.provider
+      if (updates.temperature !== undefined) reg.temperature = updates.temperature
+      if (updates.maxTokens !== undefined) reg.maxTokens = updates.maxTokens
+      if (updates.contextWindow !== undefined) reg.contextWindow = updates.contextWindow
+      if (updates.persona) reg.persona = updates.persona
+      reg.updatedAt = now
       await this.saveRegistry(registry)
     }
 

@@ -110,13 +110,92 @@ export const api = {
     stop: (agentId: string) => instance.post(`/agents/${agentId}/stop`),
     restart: (agentId: string) => instance.post(`/agents/${agentId}/restart`),
     delete: (agentId: string) => instance.delete(`/agents/${agentId}`),
-    create: (name: string, options?: { model?: string; workspace?: string; persona?: string }) =>
+    create: (name: string, options?: {
+      model?: string
+      workspace?: string
+      persona?: string
+      description?: string
+      provider?: string
+      temperature?: number
+      maxTokens?: number
+      avatar?: string
+      theme?: string
+    }) =>
       instance.post('/agents', { name, ...options }),
-    update: (agentId: string, updates: { name?: string; model?: string; persona?: string; emoji?: string; avatar?: string; theme?: string }) =>
+    update: (agentId: string, updates: {
+      name?: string
+      model?: string
+      persona?: string
+      emoji?: string
+      avatar?: string
+      theme?: string
+      provider?: string
+      temperature?: number
+      maxTokens?: number
+      description?: string
+    }) =>
       instance.put(`/agents/${agentId}`, updates),
     chat: (agentId: string, message: string) =>
       instance.post(`/agents/${agentId}/chat`, { message }, { timeout: 180000 }),
-    models: () => instance.get('/agents/models')
+    models: () => instance.get('/agents/models'),
+
+    // ====== 流式对话（新） ======
+    /**
+     * 使用 SSE EventSource 流式对话
+     * @returns EventSource 实例（用于外部 close）
+     */
+    stream: (
+      agentId: string,
+      message: string,
+      sessionId: string,
+      onToken: (token: string) => void,
+      onSessionId: (sid: string) => void,
+      onDone: () => void,
+      onError: (err: any) => void
+    ): EventSource => {
+      const params = new URLSearchParams({ message })
+      if (sessionId) params.set('sessionId', sessionId)
+      const url = `/api/agents/${agentId}/chat/stream?${params.toString()}`
+      const eventSource = new EventSource(url)
+
+      eventSource.onmessage = (e) => {
+        if (e.data === '[DONE]') {
+          eventSource.close()
+          onDone()
+          return
+        }
+        try {
+          const data = JSON.parse(e.data)
+          if (data.type === 'session') {
+            onSessionId(data.sessionId)
+          } else if (data.token) {
+            onToken(data.token)
+          } else if (data.error) {
+            eventSource.close()
+            onError(data.error)
+          }
+        } catch { /* ignore parse errors */ }
+      }
+
+      eventSource.onerror = (e) => {
+        eventSource.close()
+        onError(e)
+      }
+
+      return eventSource
+    },
+
+    // ====== 会话管理 ======
+    sessions: {
+      list: (agentId: string, limit?: number) =>
+        instance.get(`/agents/${agentId}/sessions`, { params: { limit } }),
+      get: (agentId: string, sessionId: string) =>
+        instance.get(`/agents/${agentId}/sessions/${sessionId}`),
+      create: (agentId: string, title?: string) =>
+        instance.post(`/agents/${agentId}/sessions`, { title }),
+      delete: (agentId: string, sessionId: string) =>
+        instance.delete(`/agents/${agentId}/sessions/${sessionId}`)
+    }
   },
 
   tasks: {

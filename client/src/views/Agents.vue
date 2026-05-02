@@ -39,9 +39,18 @@
               </n-tag>
             </n-descriptions-item>
             <n-descriptions-item label="模型">{{ selectedAgent?.model }}</n-descriptions-item>
+            <n-descriptions-item label="Provider">{{ (selectedAgent as any)?.provider || 'deepseek' }}</n-descriptions-item>
+            <n-descriptions-item label="温度🌡">{{ (selectedAgent as any)?.temperature ?? 0.7 }}</n-descriptions-item>
+            <n-descriptions-item label="Max Tokens">{{ (selectedAgent as any)?.maxTokens ?? 4096 }}</n-descriptions-item>
+            <n-descriptions-item label="头像/Emoji">{{ (selectedAgent as any)?.avatar || '-' }}</n-descriptions-item>
+            <n-descriptions-item label="主题">{{ (selectedAgent as any)?.theme || '-' }}</n-descriptions-item>
             <n-descriptions-item label="创建时间">{{ selectedAgent?.createdAt || '-' }}</n-descriptions-item>
+            <n-descriptions-item label="更新时间">{{ (selectedAgent as any)?.updatedAt || '-' }}</n-descriptions-item>
             <n-descriptions-item label="描述" :span="2">
               {{ selectedAgent?.description || '-' }}
+            </n-descriptions-item>
+            <n-descriptions-item label="人设" :span="2">
+              <pre style="white-space: pre-wrap; max-height: 120px; overflow-y: auto; margin: 0; font-size: 12px;">{{ selectedAgent?.persona || '-' }}</pre>
             </n-descriptions-item>
           </n-descriptions>
 
@@ -56,15 +65,67 @@
 
         <n-tab-pane name="chat" tab="对话">
           <div class="chat-container">
+            <div class="chat-toolbar">
+              <n-space align="center">
+                <n-button size="tiny" quaternary @click="loadSessions">
+                  <template #icon><n-icon :component="ChatbubbleOutline" /></template>
+                  会话
+                </n-button>
+                <n-dropdown v-if="sessions.length > 0" trigger="click" :options="sessionOptions" @select="handleSelectSession">
+                  <n-button size="tiny" quaternary>
+                    {{ currentSessionId ? (currentSessionTitle || currentSessionId.substring(0, 8)) : '选择会话' }}
+                  </n-button>
+                </n-dropdown>
+                <n-button v-if="currentSessionId" size="tiny" quaternary type="warning" @click="handleNewSession">
+                  新会话
+                </n-button>
+                <!-- 搜索按钮 -->
+                <n-button v-if="currentSessionId" size="tiny" quaternary @click="showSearch = !showSearch">
+                  <template #icon><n-icon :component="SearchOutline" /></template>
+                  搜索
+                </n-button>
+                <!-- 导出按钮 -->
+                <n-dropdown v-if="currentSessionId" trigger="click" :options="exportOptions" @select="handleExportSession">
+                  <n-button size="tiny" quaternary>
+                    <template #icon><n-icon :component="DownloadOutline" /></template>
+                    导出
+                  </n-button>
+                </n-dropdown>
+                <!-- 删除会话按钮 -->
+                <n-button v-if="currentSessionId" size="tiny" quaternary type="error" @click="handleDeleteSession">
+                  <template #icon><n-icon :component="TrashOutline" /></template>
+                </n-button>
+                <n-tag v-if="isStreaming" type="warning" size="small">正在生成...</n-tag>
+              </n-space>
+            </div>
+            <!-- 搜索栏 -->
+            <div v-if="showSearch" class="search-bar">
+              <n-input-group>
+                <n-input v-model:value="searchKeyword" placeholder="搜索对话内容..." @keyup.enter="handleSearchMessages" />
+                <n-button type="primary" ghost @click="handleSearchMessages">搜索</n-button>
+                <n-button v-if="searchResults.length > 0" quaternary @click="clearSearch">清除</n-button>
+              </n-input-group>
+              <div v-if="searchResults.length > 0" class="search-results">
+                <p style="margin: 4px 0; font-size: 12px; color: var(--n-text-color-3);">
+                  找到 {{ searchResults.length }} 条结果
+                </p>
+                <div v-for="(r, i) in searchResults.slice(0, 20)" :key="i" class="search-result-item">
+                  <n-tag size="tiny" :type="r.role === 'user' ? 'primary' : 'success'" style="margin-right: 4px;">
+                    {{ r.role === 'user' ? '用户' : 'AI' }}
+                  </n-tag>
+                  <span style="font-size: 12px;">{{ r.content.substring(0, 60) }}{{ r.content.length > 60 ? '...' : '' }}</span>
+                </div>
+              </div>
+            </div>
             <div class="messages" ref="messagesRef">
               <div v-for="msg in messages" :key="msg.id" :class="['message', msg.role]">
-                <div class="message-content">{{ msg.content }}</div>
+                <div class="message-content">{{ msg.content }}<span v-if="msg.role === 'assistant' && msg === messages[messages.length - 1] && isStreaming" class="cursor-blink">▍</span></div>
                 <div class="message-time">{{ msg.time }}</div>
               </div>
             </div>
             <n-input-group>
-              <n-input v-model:value="chatInput" placeholder="输入消息..." @keyup.enter="handleSendMessage" />
-              <n-button type="primary" @click="handleSendMessage">发送</n-button>
+              <n-input v-model:value="chatInput" placeholder="输入消息..." :disabled="isStreaming" @keyup.enter="handleSendMessage" />
+              <n-button type="primary" @click="handleSendMessage" :disabled="isStreaming" :loading="isStreaming">发送</n-button>
             </n-input-group>
           </div>
         </n-tab-pane>
@@ -85,12 +146,22 @@
           <n-select v-model:value="createForm.model" :options="modelOptions" placeholder="选择模型（可选）" />
         </n-form-item>
         <n-form-item label="人设">
-          <n-input
-            v-model:value="createForm.persona"
-            type="textarea"
-            :rows="6"
-            placeholder="角色的 AGENTS.md 内容，例如：&#10;你是张三，一个幽默的脱口秀演员，&#10;擅长用段子回答各种问题。"
-          />
+          <n-input v-model:value="createForm.persona" type="textarea" :rows="4" placeholder="角色的 AGENTS.md 内容，例如：&#10;你是张三，一个幽默的脱口秀演员，&#10;擅长用段子回答各种问题。" />
+        </n-form-item>
+        <n-form-item label="模型">
+          <n-select v-model:value="createForm.model" :options="modelOptions" placeholder="选择模型（可选）" />
+        </n-form-item>
+        <n-form-item label="Provider">
+          <n-select v-model:value="createForm.provider" :options="providerOptions" placeholder="模型提供商" />
+        </n-form-item>
+        <n-form-item label="温度">
+          <n-input-number v-model:value="createForm.temperature" :min="0" :max="2" :step="0.1" placeholder="0.7" style="width: 120px" />
+        </n-form-item>
+        <n-form-item label="Max Tokens">
+          <n-input-number v-model:value="createForm.maxTokens" :min="256" :max="32768" :step="256" placeholder="4096" style="width: 150px" />
+        </n-form-item>
+        <n-form-item label="描述">
+          <n-input v-model:value="createForm.description" placeholder="简短描述" />
         </n-form-item>
         <n-form-item label="工作空间">
           <n-input v-model:value="createForm.workspace" placeholder="留空自动生成" disabled />
@@ -104,25 +175,35 @@
       </template>
     </n-modal>
 
-    <!-- 编辑 Agent 弹窗（符合方案：改人设写workspace + 改模型直接操作config.json） -->
-    <n-modal v-model:show="showEditModal" preset="card" title="编辑 Agent" style="width: 600px;">
-      <n-form label-placement="left" label-width="100px">
+    <!-- 编辑 Agent 弹窗 -->
+    <n-modal v-model:show="showEditModal" preset="card" title="编辑 Agent" style="width: 650px;">
+      <n-form label-placement="left" label-width="110px">
         <n-form-item label="名称">
           <n-input v-model:value="editForm.name" placeholder="Agent 名称" />
         </n-form-item>
         <n-form-item label="模型">
           <n-select v-model:value="editForm.model" :options="modelOptions" placeholder="修改模型（可选）" />
         </n-form-item>
+        <n-form-item label="Provider">
+          <n-select v-model:value="editForm.provider" :options="providerOptions" placeholder="模型提供商" />
+        </n-form-item>
+        <n-form-item label="温度">
+          <n-input-number v-model:value="editForm.temperature" :min="0" :max="2" :step="0.1" placeholder="0.7" style="width: 120px" />
+        </n-form-item>
+        <n-form-item label="Max Tokens">
+          <n-input-number v-model:value="editForm.maxTokens" :min="256" :max="32768" :step="256" placeholder="4096" style="width: 150px" />
+        </n-form-item>
         <n-form-item label="人设">
-          <n-input
-            v-model:value="editForm.persona"
-            type="textarea"
-            :rows="6"
-            placeholder="修改角色的 AGENTS.md 人设"
-          />
+          <n-input v-model:value="editForm.persona" type="textarea" :rows="4" placeholder="修改角色的 AGENTS.md 人设" />
+        </n-form-item>
+        <n-form-item label="描述">
+          <n-input v-model:value="editForm.description" placeholder="简短描述" />
         </n-form-item>
         <n-form-item label="Emoji">
           <n-input v-model:value="editForm.emoji" placeholder="🦞" maxlength="2" />
+        </n-form-item>
+        <n-form-item label="头像">
+          <n-input v-model:value="editForm.avatar" placeholder="头像 URL 或 emoji" />
         </n-form-item>
         <n-form-item label="主题">
           <n-input v-model:value="editForm.theme" placeholder="主题色（如 blue）" />
@@ -170,7 +251,9 @@ import {
   NForm,
   NFormItem,
   NSelect,
+  NInputNumber,
   NSpin,
+  NDropdown,
   useMessage,
   useDialog,
   type DataTableColumns
@@ -181,7 +264,9 @@ import {
   StopOutline,
   RefreshOutline,
   ChatbubbleOutline,
-  TrashOutline
+  TrashOutline,
+  SearchOutline,
+  DownloadOutline
 } from '@vicons/ionicons5'
 import { api } from '@/api'
 
@@ -193,7 +278,15 @@ interface Agent {
   status: 'running' | 'stopped' | 'error'
   skills: string[]
   createdAt: string
+  updatedAt?: string
   persona?: string
+  provider?: string
+  apiKey?: string
+  temperature?: number
+  maxTokens?: number
+  contextWindow?: number
+  avatar?: string
+  theme?: string
 }
 
 interface PendingOp {
@@ -215,14 +308,46 @@ const selectedAgent = ref<Agent | null>(null)
 const chatInput = ref('')
 const messages = ref<any[]>([])
 const agentLogs = ref('')
+let streamSource: EventSource | null = null
+const currentSessionId = ref('')
+const currentSessionTitle = ref('')
+const currentReply = ref('')
+const isStreaming = ref(false)
+const sessions = ref<any[]>([])
+const showSearch = ref(false)
+const searchKeyword = ref('')
+const searchResults = ref<any[]>([])
+const exportOptions = ref([
+  { label: '导出为 JSON', value: 'json' },
+  { label: '导出为 Markdown', value: 'markdown' }
+])
+const sessionOptions = computed(() => {
+  return sessions.value.map(s => ({
+    label: s.title || s.id.substring(0, 12) + '...',
+    value: s.id
+  }))
+})
 
-const createForm = ref({ name: '', model: '', workspace: '', persona: '' })
-const editForm = ref({ name: '', model: '', persona: '', emoji: '', theme: '' })
+const createForm = ref({ name: '', model: '', workspace: '', persona: '', provider: '', temperature: null as number | null, maxTokens: null as number | null, description: '' })
+
+const editForm = ref({ name: '', model: '', persona: '', emoji: '', theme: '', provider: '', temperature: null as number | null, maxTokens: null as number | null, description: '', avatar: '' })
 const newSkill = ref('')
 
 const modelOptions = ref<{ label: string; value: string }[]>(
   JSON.parse(JSON.stringify([{ label: 'default', value: 'default' }]))
 )
+
+const providerOptions = ref([
+  { label: 'DeepSeek', value: 'deepseek' },
+  { label: 'OpenAI', value: 'openai' },
+  { label: 'SiliconFlow', value: 'siliconflow' },
+  { label: '阿里云通义千问', value: 'aliyun' },
+  { label: '智谱', value: 'zhipu' },
+  { label: '月之暗面 Moonshot', value: 'moonshot' },
+  { label: '百川', value: 'baichuan' },
+  { label: '火山引擎', value: 'volc' },
+  { label: '百度文心', value: 'baidu' }
+])
 
 const availableSkills = ref<{ label: string; value: string }[]>([])
 
@@ -438,8 +563,136 @@ function handleView(agent: Agent) {
   selectedAgent.value = agent
   messages.value = []
   chatInput.value = ''
+  currentSessionId.value = ''
+  currentSessionTitle.value = ''
+  currentReply.value = ''
+  isStreaming.value = false
   agentLogs.value = `[INFO] Agent ${agent.name} loaded\n[INFO] Status: ${agent.status}\n[INFO] Model: ${agent.model}`
   showDetail.value = true
+  loadSessions()
+}
+
+async function loadSessions() {
+  if (!selectedAgent.value) return
+  try {
+    sessions.value = await api.agents.sessions.list(selectedAgent.value.id, 20)
+  } catch { /* ignore */ }
+}
+
+function handleSelectSession(sessionId: string) {
+  currentSessionId.value = sessionId
+  const session = sessions.value.find(s => s.id === sessionId)
+  currentSessionTitle.value = session?.title || ''
+  // 加载会话消息
+  if (selectedAgent.value) {
+    api.agents.sessions.get(selectedAgent.value.id, sessionId)
+      .then((data: any) => {
+        if (data.messages) {
+          messages.value = data.messages.map((m: any, i: number) => ({
+            id: i,
+            role: m.role === 'user' ? 'user' : 'assistant',
+            content: m.content,
+            time: m.created_at || ''
+          }))
+        }
+      })
+      .catch(() => { /* ignore */ })
+  }
+}
+
+function handleNewSession() {
+  currentSessionId.value = ''
+  currentSessionTitle.value = ''
+  messages.value = []
+  currentReply.value = ''
+}
+
+async function handleSearchMessages() {
+  if (!searchKeyword.value.trim() || !selectedAgent.value || !currentSessionId.value) return
+  try {
+    const data = await api.agents.sessions.get(selectedAgent.value.id, currentSessionId.value) as any
+    const allMessages = data.messages || []
+    const kw = searchKeyword.value.toLowerCase()
+    searchResults.value = allMessages.filter((m: any) =>
+      m.content.toLowerCase().includes(kw)
+    )
+    if (searchResults.value.length === 0) {
+      message.info('未找到匹配的消息')
+    }
+  } catch {
+    message.error('搜索失败')
+  }
+}
+
+function clearSearch() {
+  searchKeyword.value = ''
+  searchResults.value = []
+  showSearch.value = false
+}
+
+async function handleExportSession(value: string) {
+  if (!selectedAgent.value || !currentSessionId.value) return
+  try {
+    if (value === 'json') {
+      const data = await api.agents.sessions.get(selectedAgent.value.id, currentSessionId.value) as any
+      const exportData = {
+        session: { id: currentSessionId.value, agentId: selectedAgent.value.id },
+        messages: (data.messages || []).map((m: any) => ({
+          role: m.role,
+          content: m.content,
+          createdAt: m.created_at
+        })),
+        exportedAt: new Date().toISOString()
+      }
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `session-${currentSessionId.value.substring(0, 8)}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      message.success('已导出为 JSON')
+    } else if (value === 'markdown') {
+      const data = await api.agents.sessions.get(selectedAgent.value.id, currentSessionId.value) as any
+      const messages = data.messages || []
+      let md = `# ${currentSessionTitle.value || '对话记录'}\n\n`
+      md += `> Agent: **${selectedAgent.value.name}** · 导出时间: ${new Date().toISOString()}\n\n---\n\n`
+      for (const m of messages) {
+        const roleLabel = m.role === 'user' ? '👤 用户' : '🤖 AI'
+        md += `### ${roleLabel}\n\n${m.content}\n\n`
+      }
+      const blob = new Blob([md], { type: 'text/markdown' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `session-${currentSessionId.value.substring(0, 8)}.md`
+      a.click()
+      URL.revokeObjectURL(url)
+      message.success('已导出为 Markdown')
+    }
+  } catch {
+    message.error('导出失败')
+  }
+}
+
+async function handleDeleteSession() {
+  if (!selectedAgent.value || !currentSessionId.value) return
+  dialog.warning({
+    title: '确认删除',
+    content: '确定要删除此会话吗？此操作不可撤消。',
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        await api.agents.sessions.delete(selectedAgent.value!.id, currentSessionId.value)
+        message.success('会话已删除')
+        handleNewSession()
+        loadSessions()
+      } catch {
+        message.error('删除会话失败')
+      }
+    }
+  })
 }
 
 function openEditModal() {
@@ -518,7 +771,11 @@ async function handleCreateAgent() {
     const result = await api.agents.create(createForm.value.name, {
       model: createForm.value.model || undefined,
       workspace: createForm.value.workspace || undefined,
-      persona: createForm.value.persona || undefined
+      persona: createForm.value.persona || undefined,
+      provider: createForm.value.provider || undefined,
+      temperature: createForm.value.temperature ?? undefined,
+      maxTokens: createForm.value.maxTokens ?? undefined,
+      description: createForm.value.description || undefined
     })
     if (result.taskId) {
       // 异步任务模式
@@ -526,12 +783,12 @@ async function handleCreateAgent() {
       submitTask(agentName, result.taskId, 'create', '创建 Agent')
       message.info('创建任务已提交，正在处理...')
       showCreateModal.value = false
-      createForm.value = { name: '', model: '', workspace: '', persona: '' }
+      createForm.value = { name: '', model: '', workspace: '', persona: '', provider: '', temperature: null, maxTokens: null, description: '' }
     } else {
       // 兼容非异步响应
       message.success(`Agent「${result.name}」创建成功`)
       showCreateModal.value = false
-      createForm.value = { name: '', model: '', workspace: '', persona: '' }
+      createForm.value = { name: '', model: '', workspace: '', persona: '', provider: '', temperature: null, maxTokens: null, description: '' }
       loadAgents()
     }
   } catch (err: any) {
@@ -548,7 +805,12 @@ async function handleEditAgent() {
       model: editForm.value.model || undefined,
       persona: editForm.value.persona || undefined,
       emoji: editForm.value.emoji || undefined,
-      theme: editForm.value.theme || undefined
+      theme: editForm.value.theme || undefined,
+      provider: editForm.value.provider || undefined,
+      temperature: editForm.value.temperature ?? undefined,
+      maxTokens: editForm.value.maxTokens ?? undefined,
+      description: editForm.value.description || undefined,
+      avatar: editForm.value.avatar || undefined
     })
     if (result.taskId) {
       // 异步任务模式
@@ -569,17 +831,22 @@ async function handleEditAgent() {
 
 function handleRemoveSkill(skill: string) {
   if (!selectedAgent.value) return
-  const idx = selectedAgent.value.skills.indexOf(skill)
-  if (idx !== -1) {
-    selectedAgent.value.skills.splice(idx, 1)
-    message.success(`已移除技能「${skill}」`)
-  }
+  // 走后端 API 卸载技能
+  api.skills.uninstall(skill)
+    .then(() => {
+      const idx = selectedAgent.value!.skills.indexOf(skill)
+      if (idx !== -1) selectedAgent.value!.skills.splice(idx, 1)
+      message.success(`技能「${skill}」已卸载`)
+    })
+    .catch((err: any) => {
+      message.error(err?.error || '卸载失败')
+    })
 }
 
 async function handleAddSkill() {
   if (!newSkill.value || !selectedAgent.value) return
-  // 通过真实API安装技能
   try {
+    // 走后端 API 安装技能
     await api.skills.install(newSkill.value)
     selectedAgent.value.skills.push(newSkill.value)
     message.success(`技能「${newSkill.value}」已安装`)
@@ -591,8 +858,14 @@ async function handleAddSkill() {
   showAddSkill.value = false
 }
 
+let currentSessionId = ref('')
+let currentReply = ref('')
+let isStreaming = ref(false)
+
 async function handleSendMessage() {
-  if (!chatInput.value.trim()) return
+  if (!chatInput.value.trim() || !selectedAgent.value) return
+  if (isStreaming.value) return
+
   const text = chatInput.value
   messages.value.push({
     id: Date.now(),
@@ -601,25 +874,56 @@ async function handleSendMessage() {
     time: new Date().toLocaleTimeString()
   })
   chatInput.value = ''
+  isStreaming.value = true
+  currentReply.value = ''
 
-  try {
-    if (selectedAgent.value) {
-      const result = await api.agents.chat(selectedAgent.value.id, text)
-      messages.value.push({
-        id: Date.now(),
-        role: 'assistant',
-        content: result.response || 'Agent 没有返回内容',
-        time: new Date().toLocaleTimeString()
-      })
+  // 加入临时 AI 消息占位（打字机效果）
+  const msgId = Date.now() + 1
+  messages.value.push({
+    id: msgId,
+    role: 'assistant',
+    content: '',
+    time: new Date().toLocaleTimeString()
+  })
+
+  streamSource = api.agents.stream(
+    selectedAgent.value.id,
+    text,
+    currentSessionId.value,
+    // onToken
+    (token) => {
+      currentReply.value += token
+      // 实时更新最后一条消息
+      const lastMsg = messages.value[messages.value.length - 1]
+      if (lastMsg && lastMsg.role === 'assistant') {
+        lastMsg.content = currentReply.value
+      }
+    },
+    // onSessionId
+    (sid) => {
+      currentSessionId.value = sid
+    },
+    // onDone
+    () => {
+      isStreaming.value = false
+      streamSource = null
+      if (!currentReply.value) {
+        const lastMsg = messages.value[messages.value.length - 1]
+        if (lastMsg && lastMsg.role === 'assistant') {
+          lastMsg.content = 'Agent 没有返回内容'
+        }
+      }
+    },
+    // onError
+    (err) => {
+      isStreaming.value = false
+      streamSource = null
+      const lastMsg = messages.value[messages.value.length - 1]
+      if (lastMsg && lastMsg.role === 'assistant') {
+        lastMsg.content = typeof err === 'string' ? err : (err?.error || '发送失败，请重试')
+      }
     }
-  } catch (err: any) {
-    messages.value.push({
-      id: Date.now(),
-      role: 'assistant',
-      content: err?.error || '发送失败，请重试',
-      time: new Date().toLocaleTimeString()
-    })
-  }
+  )
 }
 </script>
 
@@ -667,5 +971,48 @@ async function handleSendMessage() {
   font-size: 12px;
   color: var(--n-text-color-3);
   margin-top: 4px;
+}
+
+.chat-toolbar {
+  padding: 8px 4px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--n-divider-color);
+}
+
+.search-bar {
+  padding: 8px 4px;
+  margin-bottom: 8px;
+  background: var(--n-color-embedded);
+  border-radius: 4px;
+}
+
+.search-results {
+  max-height: 150px;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+
+.search-result-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 12px;
+  transition: background 0.2s;
+}
+
+.search-result-item:hover {
+  background: var(--n-color-hover);
+}
+
+.cursor-blink {
+  animation: blink 1s step-end infinite;
+  color: #18a058;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
 }
 </style>
