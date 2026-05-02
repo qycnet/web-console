@@ -448,22 +448,55 @@ class OpenClawService extends EventEmitter {
 
   /**
    * 从混合输出（stdout + stderr）中提取 JSON 回复文本
+   *
+   * 注意：openclaw agent CLI 的 JSON 回复结构：
+   * {
+   *   "payloads": [
+   *     { "role": "assistant", "text": "回复内容" }
+   *   ]
+   * }
+   *
+   * 搜索路径：payloads[0].text → response → reply → text → content
    */
   private _extractReply(output: string): string | null {
-    // 兼容 stdout 中混有插件警告的情况
-    const patterns = [
-      /^\s*\{[\s\S]*?\}\s*/m,
-      /^\s*\[[\s\S]*?\]\s*/m
-    ]
-    for (const p of patterns) {
-      const match = output.match(p)
-      if (match) {
-        try {
-          const result = JSON.parse(match[0].trim())
-          const reply = result.response || result.reply || result.text || result.content || ''
-          if (reply) return reply
-        } catch {}
+    // 先尝试提取最外层的完整 JSON 对象（贪婪匹配到最后一个 }）
+    // 兼容 stdout/stderr 混有插件 stderr 警告的情况
+    const jsonMatch = output.match(/\{[\s\S]*\}/m)
+    if (!jsonMatch) return null
+
+    try {
+      const result = JSON.parse(jsonMatch[0].trim())
+
+      // 优先取 payloads 数组中的文本
+      if (result.payloads && Array.isArray(result.payloads)) {
+        const texts = result.payloads
+          .filter((p: any) => p.role === 'assistant')
+          .map((p: any) => (p.text || '').trim())
+          .filter(Boolean)
+        if (texts.length > 0) return texts.join('\n')
       }
+
+      // 降级：搜索顶层字段
+      const reply = result.response || result.reply || result.text || result.content || ''
+      if (reply) return reply
+
+      // 如果顶层也没有，遍历 payloads 之外的嵌套字段
+      const found = this._deepFindText(result)
+      if (found) return found
+    } catch {}
+
+    return null
+  }
+
+  /**
+   * 深度递归搜索对象中的文本内容
+   */
+  private _deepFindText(obj: any, depth: number = 0): string | null {
+    if (depth > 5 || !obj || typeof obj !== 'object') return null
+    for (const val of Object.values(obj)) {
+      if (typeof val === 'string' && val.length > 3) return val
+      const nested = this._deepFindText(val, depth + 1)
+      if (nested) return nested
     }
     return null
   }
@@ -483,34 +516,6 @@ class OpenClawService extends EventEmitter {
       logger.error(`Failed to get logs for agent ${agentId}:`, error)
       return []
     }
-  }
-
-  /**
-   * 模拟 Agent 数据（开发环境）
-   */
-  private getMockAgents(): AgentInfo[] {
-    return [
-      {
-        id: 'agent-main',
-        name: '主 Agent',
-        status: 'running',
-        pid: 12345,
-        model: 'gpt-4',
-        skills: ['weather', 'translator', 'reminder'],
-        uptime: 3600,
-        memoryUsage: 256,
-        cpuUsage: 15,
-        lastActive: new Date()
-      },
-      {
-        id: 'agent-writer',
-        name: '写作助手',
-        status: 'stopped',
-        model: 'claude-3',
-        skills: ['translator'],
-        lastActive: new Date(Date.now() - 3600000)
-      }
-    ]
   }
 
   /**
