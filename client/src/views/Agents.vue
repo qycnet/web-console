@@ -161,8 +161,7 @@ import {
   StopOutline,
   RefreshOutline,
   ChatbubbleOutline,
-  TrashOutline,
-  CreateOutline
+  TrashOutline
 } from '@vicons/ionicons5'
 import { api } from '@/api'
 
