@@ -11,7 +11,104 @@ import { getJwtSecret } from '../utils/jwt-secret.js'
 
 const router = Router()
 
-// 所有路由需要认证
+// 流式对话路由必须在 authMiddleware 之前注册
+// 因为 EventSource 无法携带 Authorization header，走 query token 自鉴权
+// ============================================================================
+// 流式对话（新）：GET /api/agents/:agentId/chat/stream
+// SSE (text/event-stream) 流式返回
+// 从 query 参数 token 鉴权（替代 router-level authMiddleware）
+// ============================================================================
+router.get('/:agentId/chat/stream', async (req: Request, res: Response) => {
+  // 从 query 参数获取 token 鉴权（EventSource 无法带自定义 Header）
+  try {
+    const token = req.query.token as string
+    if (!token) {
+      res.status(401).json({ error: '未授权访问' })
+      return
+    }
+    const decoded = jwt.verify(token, getJwtSecret()) as any
+    req.user = { userId: decoded.userId, role: decoded.role }
+  } catch {
+    res.status(401).json({ error: 'Token 无效或已过期' })
+    return
+  }
+
+  // 设置 SSE headers
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')   // Nginx 禁用缓冲
+  res.flushHeaders()
+
+  const agentId = req.params.agentId
+  const message = req.query.message as string
+  let sessionId = req.query.sessionId as string
+
+  if (!message) {
+    res.write(`data: ${JSON.stringify({ error: '消息不能为空' })}\n\n`)
+    res.end()
+    return
+  }
+
+  // 如果没有 sessionId，新建一个
+  if (!sessionId) {
+    sessionId = generateSessionId()
+    database.createSession(sessionId, agentId, message.substring(0, 50))
+  } else {
+    // 检查 session 是否存在
+    const existing = database.getSession(sessionId)
+    if (!existing) {
+      database.createSession(sessionId, agentId)
+    }
+  }
+
+  // 写入初始化事件（包含 sessionId，让前端知道）
+  res.write(`data: ${JSON.stringify({ type: 'session', sessionId })}\n\n`)
+
+  try {
+    // 获取 Agent 配置
+    const agentInfo = await openclawService.getAgent(agentId)
+    if (!agentInfo) {
+      res.write(`data: ${JSON.stringify({ error: 'Agent 不存在' })}\n\n`)
+      res.end()
+      return
+    }
+
+    const agentConfig: AgentChatConfig = {
+      id: agentInfo.id,
+      name: agentInfo.name,
+      persona: agentInfo.persona,
+      provider: agentInfo.provider || 'deepseek',
+      model: agentInfo.model || 'deepseek-chat',
+      apiKey: agentInfo.apiKey || undefined,
+      temperature: agentInfo.temperature ?? 0.7,
+      maxTokens: agentInfo.maxTokens ?? 4096
+    }
+
+    await chatStream(
+      agentConfig,
+      sessionId,
+      message,
+      (token) => {
+        res.write(`data: ${JSON.stringify({ token })}\n\n`)
+      },
+      () => {
+        res.write('data: [DONE]\n\n')
+        res.end()
+      },
+      (error) => {
+        res.write(`data: ${JSON.stringify({ error })}\n\n`)
+        res.end()
+      }
+    )
+  } catch (err: any) {
+    logger.error('Stream chat error:', err)
+    res.write(`data: ${JSON.stringify({ error: err.message || '对话失败' })}\n\n`)
+    res.end()
+  }
+})
+
+// 其他所有路由需要认证
 router.use(authMiddleware)
 
 /**
@@ -277,107 +374,6 @@ router.delete('/:agentId',
     }
   }
 )
-
-// ============================================================================
-// 流式对话（新）：GET /api/agents/:agentId/chat/stream
-// SSE (text/event-stream) 流式返回
-// 注意：EventSource 不能携带 Authorization header，
-// 因此从 query 参数 token 鉴权（替代 router-level authMiddleware）
-// ============================================================================
-router.get('/:agentId/chat/stream', async (req: Request, res: Response) => {
-  // 从 query 参数获取 token 鉴权（EventSource 无法带自定义 Header）
-  try {
-    const token = req.query.token as string
-    if (!token) {
-      res.status(401).json({ error: '未授权访问' })
-      return
-    }
-    const decoded = jwt.verify(token, getJwtSecret()) as any
-    req.user = { userId: decoded.userId, role: decoded.role }
-  } catch {
-    res.status(401).json({ error: 'Token 无效或已过期' })
-    return
-  }
-
-  // 设置 SSE headers
-  res.setHeader('Content-Type', 'text/event-stream')
-  res.setHeader('Cache-Control', 'no-cache')
-  res.setHeader('Connection', 'keep-alive')
-  res.setHeader('X-Accel-Buffering', 'no')   // Nginx 禁用缓冲
-  res.flushHeaders()
-
-  const agentId = req.params.agentId
-  const message = req.query.message as string
-  let sessionId = req.query.sessionId as string
-
-  if (!message) {
-    res.write(`data: ${JSON.stringify({ error: '消息不能为空' })}\n\n`)
-    res.end()
-    return
-  }
-
-  // 如果没有 sessionId，新建一个
-  if (!sessionId) {
-    sessionId = generateSessionId()
-    database.createSession(sessionId, agentId, message.substring(0, 50))
-  } else {
-    // 检查 session 是否存在
-    const existing = database.getSession(sessionId)
-    if (!existing) {
-      database.createSession(sessionId, agentId)
-    }
-  }
-
-  // 写入初始化事件（包含 sessionId，让前端知道）
-  res.write(`data: ${JSON.stringify({ type: 'session', sessionId })}\n\n`)
-
-  try {
-    // 获取 Agent 配置
-    const agentInfo = await openclawService.getAgent(agentId)
-    if (!agentInfo) {
-      res.write(`data: ${JSON.stringify({ error: 'Agent 不存在' })}\n\n`)
-      res.end()
-      return
-    }
-
-    const agentConfig: AgentChatConfig = {
-      id: agentInfo.id,
-      name: agentInfo.name,
-      persona: agentInfo.persona,
-      provider: agentInfo.provider || 'deepseek',
-      model: agentInfo.model || 'deepseek-chat',
-      apiKey: agentInfo.apiKey || undefined,
-      temperature: agentInfo.temperature ?? 0.7,
-      maxTokens: agentInfo.maxTokens ?? 4096
-    }
-
-    await chatStream(
-      agentConfig,
-      sessionId,
-      message,
-      (token) => {
-        res.write(`data: ${JSON.stringify({ token })}\n\n`)
-      },
-      () => {
-        res.write('data: [DONE]\n\n')
-        res.end()
-      },
-      (error) => {
-        res.write(`data: ${JSON.stringify({ error })}\n\n`)
-        res.end()
-      }
-    )
-  } catch (err: any) {
-    logger.error('Stream chat error:', err)
-    res.write(`data: ${JSON.stringify({ error: err.message || '对话失败' })}\n\n`)
-    res.end()
-  }
-})
-
-// ============================================================================
-// 会话管理
-// ============================================================================
-
 /**
  * GET /api/agents/:agentId/sessions
  * 获取 Agent 的会话列表
