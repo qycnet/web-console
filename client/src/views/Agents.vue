@@ -192,6 +192,7 @@ interface Agent {
   status: 'running' | 'stopped' | 'error'
   skills: string[]
   createdAt: string
+  persona?: string
 }
 
 const message = useMessage()
@@ -345,6 +346,8 @@ function openEditModal() {
   if (!selectedAgent.value) return
   editForm.value = {
     name: selectedAgent.value.name,
+    model: selectedAgent.value.model,
+    persona: selectedAgent.value.persona || '',
     emoji: '',
     theme: ''
   }

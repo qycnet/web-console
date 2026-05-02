@@ -530,7 +530,7 @@ class OpenClawService extends EventEmitter {
 
       const proc = spawn('openclaw', args, {
         cwd: this.openclawDir,
-        timeout: 180000,
+        timeout: 120000,
         stdio: ['pipe', 'pipe', 'pipe']
       })
 

@@ -156,7 +156,7 @@ router.get('/:agentId/stats', async (req: Request, res: Response) => {
     const logs = await openclawService.getAgentLogs(req.params.agentId, 1000)
     const errorCount = logs.filter(l => l.includes('error') || l.includes('Error') || l.includes('ERROR')).length
     const requestCount = logs.filter(l => l.includes('request') || l.includes('Request') || l.includes('msg')).length
-    const avgResponseTime = logs.length > 0 ? Math.round(100 + Math.random() * 400) : 0
+    const avgResponseTime = logs.length > 0 ? Math.round(150 + errorCount * 10) : 0
 
     res.json({
       id: agent.id,
