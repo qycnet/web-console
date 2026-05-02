@@ -153,7 +153,7 @@ class OpenClawService extends EventEmitter {
       const statePath = path.join(this.openclawDir, 'state', 'agents.json')
       if (await fs.pathExists(statePath)) {
         const state = await fs.readJson(statePath)
-        return Object.entries(state).map(([id, info]: [string, any]) => ({
+        const agents = Object.entries(state).map(([id, info]: [string, any]) => ({
           id,
           name: info.name || id,
           status: info.status || 'stopped',
@@ -165,14 +165,80 @@ class OpenClawService extends EventEmitter {
           cpuUsage: info.cpuUsage,
           lastActive: info.lastActive ? new Date(info.lastActive) : undefined
         }))
+        return agents
       }
 
-      // 如果没有状态文件，返回模拟数据
-      return this.getMockAgents()
+      // 通过 openclaw CLI 读取真实 Agent 列表
+      try {
+        const agents = await this.getAgentsFromCLI()
+        if (agents.length > 0) return agents
+      } catch {
+        // CLI 不可用时，从 OpenClaw 配置文件读取
+      }
+
+      // 从 OpenClaw 配置文件中读取 agents 配置
+      try {
+        const config = await this.getConfig()
+        if (config.agents && Array.isArray(config.agents) && config.agents.length > 0) {
+          return config.agents
+        }
+      } catch {}
+
+      // 无数据时返回空列表而非 Mock
+      return []
     } catch (error) {
       logger.error('Failed to get agents:', error)
-      return this.getMockAgents()
+      return []
     }
+  }
+
+  /**
+   * 通过 CLI 获取真实 Agent 列表
+   */
+  private async getAgentsFromCLI(): Promise<AgentInfo[]> {
+    return new Promise((resolve) => {
+      const proc = spawn('openclaw', ['agents', 'list', '--json'], {
+        cwd: this.openclawDir,
+        timeout: 15000,
+        stdio: ['pipe', 'pipe', 'pipe']
+      })
+
+      let stdout = ''
+      let stderr = ''
+
+      proc.stdout.on('data', (data: Buffer) => {
+        stdout += data.toString()
+      })
+
+      proc.stderr.on('data', (data: Buffer) => {
+        stderr += data.toString()
+      })
+
+      proc.on('close', (code: number | null) => {
+        if (code === 0 && stdout) {
+          try {
+            const result = JSON.parse(stdout)
+            const list = Array.isArray(result) ? result : (result.agents || [result])
+            resolve(list.map((a: any) => ({
+              id: a.id || a.name || 'unknown',
+              name: a.name || a.id || '未知',
+              status: a.status || (a.running ? 'running' : 'stopped'),
+              pid: a.pid,
+              model: a.model || 'default',
+              skills: a.skills || [],
+              uptime: a.uptime,
+              memoryUsage: a.memoryUsage,
+              cpuUsage: a.cpuUsage,
+              lastActive: a.lastActive ? new Date(a.lastActive) : new Date()
+            })))
+            return
+          } catch {}
+        }
+        resolve([])
+      })
+
+      proc.on('error', () => resolve([]))
+    })
   }
 
   /**
@@ -250,14 +316,15 @@ class OpenClawService extends EventEmitter {
 
   /**
    * 向 Agent 发送消息
-   * 通过 openclaw agent CLI 与 Agent 通信
+   * 通过 openclaw agent CLI（--local 嵌入模式）与 Agent 通信
    */
   async sendMessage(agentId: string, message: string): Promise<string> {
     try {
       return new Promise((resolve) => {
-        const proc = spawn('openclaw', ['agent', '--agent', agentId, '--message', message, '--json'], {
+        // 使用 --local 嵌入模式运行 Agent
+        const proc = spawn('openclaw', ['agent', '--agent', agentId, '--message', message, '--local', '--json'], {
           cwd: this.openclawDir,
-          timeout: 60000,
+          timeout: 120000,
           stdio: ['pipe', 'pipe', 'pipe']
         })
 
@@ -281,8 +348,14 @@ class OpenClawService extends EventEmitter {
               resolve(stdout.trim() || 'Agent 已收到消息，但没有返回文本回复。')
             }
           } else {
-            logger.warn(`openclaw agent exit code=${code}, stderr=${stderr}`)
-            resolve('Agent 当前不可用，请稍后重试。')
+            // 非 0 退出时尝试从 stderr 或非 JSON stdout 提取内容
+            const fallback = stdout.trim() || stderr.trim()
+            if (fallback && fallback.length > 5) {
+              resolve(fallback)
+            } else {
+              logger.warn(`openclaw agent exit code=${code}, stderr=${stderr}`)
+              resolve('Agent 当前不可用，请稍后重试。')
+            }
           }
         })
 
@@ -340,6 +413,90 @@ class OpenClawService extends EventEmitter {
         lastActive: new Date(Date.now() - 3600000)
       }
     ]
+  }
+
+  /**
+   * 创建 Agent（通过 openclaw agents add CLI）
+   */
+  async createAgent(name: string, options?: { model?: string; workspace?: string }): Promise<{ id: string; name: string }> {
+    return new Promise((resolve, reject) => {
+      const args = ['agents', 'add', name, '--non-interactive']
+      if (options?.model) args.push('--model', options.model)
+      if (options?.workspace) args.push('--workspace', options.workspace)
+      args.push('--json')
+
+      const proc = spawn('openclaw', args, {
+        cwd: this.openclawDir,
+        timeout: 30000,
+        stdio: ['pipe', 'pipe', 'pipe']
+      })
+
+      let stdout = ''
+      proc.stdout.on('data', (data: Buffer) => { stdout += data.toString() })
+
+      proc.on('close', (code) => {
+        if (code === 0 && stdout) {
+          try {
+            const result = JSON.parse(stdout)
+            resolve({ id: result.id || result.name || name, name })
+          } catch {
+            resolve({ id: name, name })
+          }
+        } else {
+          reject(new Error(`openclaw agents add exited with code ${code}`))
+        }
+      })
+      proc.on('error', reject)
+    })
+  }
+
+  /**
+   * 更新 Agent 身份信息（通过 openclaw agents set-identity CLI）
+   */
+  async updateAgent(agentId: string, updates: { name?: string; emoji?: string; avatar?: string; theme?: string }): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const args = ['agents', 'set-identity', '--agent', agentId]
+      if (updates.name) args.push('--name', updates.name)
+      if (updates.emoji) args.push('--emoji', updates.emoji)
+      if (updates.avatar) args.push('--avatar', updates.avatar)
+      if (updates.theme) args.push('--theme', updates.theme)
+      args.push('--json')
+
+      const proc = spawn('openclaw', args, {
+        cwd: this.openclawDir,
+        timeout: 15000,
+        stdio: ['pipe', 'pipe', 'pipe']
+      })
+
+      proc.on('close', (code) => {
+        if (code === 0) resolve()
+        else reject(new Error(`openclaw agents set-identity exited with code ${code}`))
+      })
+      proc.on('error', reject)
+    })
+  }
+
+  /**
+   * 删除 Agent（通过 openclaw agents delete CLI）
+   */
+  async deleteAgent(agentId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const proc = spawn('openclaw', ['agents', 'delete', agentId, '--force', '--json'], {
+        cwd: this.openclawDir,
+        timeout: 15000,
+        stdio: ['pipe', 'pipe', 'pipe']
+      })
+
+      proc.on('close', (code) => {
+        if (code === 0) {
+          logger.info(`Agent deleted: ${agentId}`)
+          resolve()
+        } else {
+          reject(new Error(`openclaw agents delete exited with code ${code}`))
+        }
+      })
+      proc.on('error', reject)
+    })
   }
 
   /**

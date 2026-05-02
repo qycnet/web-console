@@ -108,7 +108,14 @@ export const api = {
     get: (agentId: string) => instance.get(`/agents/${agentId}`),
     start: (agentId: string) => instance.post(`/agents/${agentId}/start`),
     stop: (agentId: string) => instance.post(`/agents/${agentId}/stop`),
-    restart: (agentId: string) => instance.post(`/agents/${agentId}/restart`)
+    restart: (agentId: string) => instance.post(`/agents/${agentId}/restart`),
+    delete: (agentId: string) => instance.delete(`/agents/${agentId}`),
+    create: (name: string, options?: { model?: string; workspace?: string }) =>
+      instance.post('/agents', { name, ...options }),
+    update: (agentId: string, updates: { name?: string; emoji?: string; avatar?: string; theme?: string }) =>
+      instance.put(`/agents/${agentId}`, updates),
+    chat: (agentId: string, message: string) =>
+      instance.post(`/agents/${agentId}/chat`, { message })
   },
 
   monitor: {

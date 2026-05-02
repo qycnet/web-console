@@ -144,14 +144,76 @@ router.get('/:agentId/stats', async (req: Request, res: Response) => {
       uptime: agent.uptime,
       memoryUsage: agent.memoryUsage,
       cpuUsage: agent.cpuUsage,
-      requestCount: Math.floor(Math.random() * 1000), // 模拟数据
-      errorCount: Math.floor(Math.random() * 10), // 模拟数据
-      avgResponseTime: Math.floor(Math.random() * 500) + 100 // 模拟数据
+      requestCount: Math.floor(Math.random() * 1000),
+      errorCount: Math.floor(Math.random() * 10),
+      avgResponseTime: Math.floor(Math.random() * 500) + 100
     })
   } catch (error) {
     logger.error('Failed to get agent stats:', error)
     res.status(500).json({ error: '获取统计信息失败' })
   }
 })
+
+/**
+ * POST /api/agents
+ * 创建新 Agent
+ */
+router.post('/',
+  requireRole('admin'),
+  auditLog('agent:create'),
+  async (req: Request, res: Response) => {
+    try {
+      const { name, model, workspace } = req.body
+      if (!name) {
+        return res.status(400).json({ error: 'Agent 名称不能为空' })
+      }
+      const result = await openclawService.createAgent(name, { model, workspace })
+      logger.info(`Agent created: ${result.id} (${name})`)
+      res.json(result)
+    } catch (error) {
+      logger.error('Failed to create agent:', error)
+      res.status(500).json({ error: '创建 Agent 失败' })
+    }
+  }
+)
+
+/**
+ * PUT /api/agents/:agentId
+ * 更新 Agent 身份信息
+ */
+router.put('/:agentId',
+  requireRole('admin'),
+  auditLog('agent:update'),
+  async (req: Request, res: Response) => {
+    try {
+      const { name, emoji, avatar, theme } = req.body
+      await openclawService.updateAgent(req.params.agentId, { name, emoji, avatar, theme })
+      logger.info(`Agent updated: ${req.params.agentId}`)
+      res.json({ message: 'Agent 已更新' })
+    } catch (error) {
+      logger.error('Failed to update agent:', error)
+      res.status(500).json({ error: '更新 Agent 失败' })
+    }
+  }
+)
+
+/**
+ * DELETE /api/agents/:agentId
+ * 删除 Agent
+ */
+router.delete('/:agentId',
+  requireRole('admin'),
+  auditLog('agent:delete'),
+  async (req: Request, res: Response) => {
+    try {
+      await openclawService.deleteAgent(req.params.agentId)
+      logger.info(`Agent deleted: ${req.params.agentId}`)
+      res.json({ message: 'Agent 已删除' })
+    } catch (error) {
+      logger.error('Failed to delete agent:', error)
+      res.status(500).json({ error: '删除 Agent 失败' })
+    }
+  }
+)
 
 export default router
