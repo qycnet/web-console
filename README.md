@@ -216,19 +216,47 @@ pm2 startup
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/agents` | Agent 列表 |
+| GET | `/api/agents` | Agent 列表（从 CLI/状态文件/配置文件三级获取）|
+| GET | `/api/agents/models` | 可用模型列表（从 OpenClaw 配置动态读取）|
+| GET | `/api/agents/:id` | Agent 详情 |
+| POST | `/api/agents` | 创建 Agent（同时写入 workspace 人设文件）|
+| PUT | `/api/agents/:id` | 更新 Agent（名称/模型/人设/Emoji/主题）|
+| DELETE | `/api/agents/:id` | 删除 Agent（清理状态 + workspace 目录）|
 | POST | `/api/agents/:id/start` | 启动 Agent |
 | POST | `/api/agents/:id/stop` | 停止 Agent |
-| POST | `/api/agents/:id/chat` | 与 Agent 对话 |
+| POST | `/api/agents/:id/restart` | 重启 Agent |
+| POST | `/api/agents/:id/chat` | 与 Agent 对话（--local --session-id 方式）|
+| GET | `/api/agents/:id/logs` | 获取 Agent 日志 |
+| GET | `/api/agents/:id/stats` | 获取 Agent 统计信息（基于日志统计）|
 
-### 技能 API
+### 文件 API
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/skills` | 技能市场 |
-| GET | `/api/skills/installed` | 已安装技能 |
-| POST | `/api/skills/install/:id` | 安装技能 |
-| DELETE | `/api/skills/:id` | 卸载技能 |
+| GET | `/api/files?path=/` | 文件列表 |
+| GET | `/api/files/read?path=/` | 读取文件内容 |
+| PUT | `/api/files/write` | 写入文件 |
+| POST | `/api/files/upload` | 上传文件（单文件，最大 100MB）|
+| POST | `/api/files/batch-upload` | 批量上传（最多 50 个文件）|
+| POST | `/api/files/chunk/init` | 大文件断点续传 - 初始化会话 |
+| POST | `/api/files/chunk/upload` | 大文件断点续传 - 上传分片 |
+| POST | `/api/files/chunk/merge` | 大文件断点续传 - 合并分片 |
+| GET | `/api/files/chunk/status/:uploadId` | 大文件断点续传 - 查询进度 |
+| DELETE | `/api/files/chunk/cancel/:uploadId` | 大文件断点续传 - 取消清理 |
+| GET | `/api/files/download?path=/` | 下载文件（目录自动打包 ZIP）|
+| DELETE | `/api/files?path=/` | 删除文件/目录 |
+| PUT | `/api/files/move` | 移动/重命名文件 |
+| POST | `/api/files/mkdir` | 创建目录 |
+
+### 监控 API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/monitor/system` | 系统信息（CPU/内存/磁盘）|
+| GET | `/api/monitor/processes` | 进程列表 |
+| GET | `/api/monitor/logs` | 系统日志 |
+| GET | `/api/monitor/network` | 网络流量（读取 /proc/net/dev）|
+| POST | `/api/monitor/errors` | 前端错误上报 |
 
 ### 告警 API
 

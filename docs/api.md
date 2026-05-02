@@ -351,9 +351,105 @@
 
 ### POST /api/files/upload
 
-上传文件（multipart/form-data，最大 100MB）
+上传单个文件（multipart/form-data，最大 100MB）
 
 **字段：** `file`（文件），**查询参数：** `path`（目标目录）
+
+### POST /api/files/batch-upload
+
+批量上传文件（multipart/form-data，最多 50 个文件）
+
+**字段：** `files[]`（多个文件），**查询参数：** `path`（目标目录）
+
+**成功响应 (200)：**
+```json
+{
+  "message": "上传完成：5/5 个文件",
+  "results": [
+    { "name": "file1.txt", "size": 1024, "status": "success" },
+    { "name": "file2.txt", "size": 2048, "status": "success" }
+  ]
+}
+```
+
+### POST /api/files/chunk/init
+
+大文件断点续传 — 初始化上传会话（5MB 分片）
+
+**请求体：**
+```json
+{
+  "filename": "large-file.zip",
+  "fileSize": 104857600,
+  "targetDir": "/uploads",
+  "mimeType": "application/zip"
+}
+```
+
+**成功响应 (200)：**
+```json
+{
+  "uploadId": "1710498600-a1b2c3",
+  "chunkSize": 5242880,
+  "totalChunks": 20,
+  "message": "分片上传会话已创建，共 20 个分片"
+}
+```
+
+### POST /api/files/chunk/upload
+
+上传单个分片（multipart/form-data）
+
+**字段：** `file`（分片二进制）、`uploadId`（会话 ID，字符串）、`chunkIndex`（分片序号，数字）
+
+**成功响应 (200)：**
+```json
+{
+  "uploadId": "1710498600-a1b2c3",
+  "chunkIndex": 0,
+  "receivedChunks": 5,
+  "totalChunks": 20,
+  "progress": 25,
+  "complete": false
+}
+```
+
+### POST /api/files/chunk/merge
+
+合并已上传的分片
+
+**请求体：** `{"uploadId": "1710498600-a1b2c3"}`
+
+**成功响应 (200)：**
+```json
+{
+  "filename": "large-file.zip",
+  "size": 104857600,
+  "path": "/uploads/large-file.zip",
+  "message": "文件上传完成"
+}
+```
+
+### GET /api/files/chunk/status/:uploadId
+
+查询上传进度
+
+**成功响应 (200)：**
+```json
+{
+  "uploadId": "1710498600-a1b2c3",
+  "filename": "large-file.zip",
+  "totalChunks": 20,
+  "receivedChunks": [0, 1, 2, 3, 4],
+  "progress": 25,
+  "complete": false,
+  "missingChunks": [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+}
+```
+
+### DELETE /api/files/chunk/cancel/:uploadId
+
+取消上传并清理临时分片
 
 ### GET /api/files/download?path=/
 
@@ -472,7 +568,7 @@
 
 ### GET /api/agents
 
-获取 Agent 列表
+获取 Agent 列表（从 CLI / 状态文件 / 配置文件三级获取）
 
 **成功响应 (200)：**
 ```json
@@ -493,6 +589,45 @@
 ```
 
 **状态说明：** `running` - 运行中, `stopped` - 已停止, `error` - 错误
+
+### GET /api/agents/models
+
+获取可用模型列表（从 OpenClaw 配置动态读取）
+
+**成功响应 (200)：**
+```json
+[
+  {
+    "id": "LLM_DeepSeekV4_Thinking",
+    "name": "LLM_DeepSeekV4_Thinking",
+    "provider": "xiaoyiprovider"
+  }
+]
+```
+
+### POST /api/agents
+
+创建新 Agent。自动写入 workspace 人设文件（AGENTS.md / IDENTITY.md），调用 openclaw agents add 注册，记录到 registry.json。
+
+**请求体：**
+```json
+{
+  "name": "my-agent",
+  "model": "xiaoyiprovider/LLM_DeepSeekV4_Thinking",
+  "persona": "你是张三，一个幽默的脱口秀演员...",
+  "workspace": "/path/to/workspace"
+}
+```
+
+**成功响应 (201)：**
+```json
+{
+  "id": "my-agent",
+  "name": "my-agent"
+}
+```
+
+**权限：** admin
 
 ### GET /api/agents/:agentId
 
@@ -528,7 +663,7 @@
 
 ### POST /api/agents/:agentId/chat
 
-与 Agent 对话
+与 Agent 对话。使用 openclaw agent CLI（--local --session-id 嵌入模式）。
 
 **请求体：** `{"message": "今天天气怎么样？"}`
 
@@ -536,7 +671,7 @@
 
 ### GET /api/agents/:agentId/stats
 
-获取 Agent 统计信息
+获取 Agent 统计信息（基于日志统计 requestCount / errorCount / avgResponseTime）
 
 **成功响应 (200)：**
 ```json
@@ -551,6 +686,34 @@
   "avgResponseTime": 350
 }
 ```
+
+### PUT /api/agents/:agentId
+
+更新 Agent 信息。编辑模型直接改 config.json 的 agents.list，编辑名称/Emoji/主题调用 set-identity，编辑人设写入 workspace 文件。
+
+**请求体：**
+```json
+{
+  "name": "新名称",
+  "model": "xiaoyiprovider/LLM_DeepSeekV4_Thinking",
+  "persona": "新的人设内容...",
+  "emoji": "🦞",
+  "theme": "blue",
+  "avatar": "avatars/my-agent.png"
+}
+```
+
+**成功响应 (200)：** `{"message": "Agent 已更新"}`
+
+**权限：** admin
+
+### DELETE /api/agents/:agentId
+
+删除 Agent。调用 openclaw agents delete，清理 workspace 目录，移除 registry 记录。
+
+**成功响应 (200)：** `{"message": "Agent 已删除"}`
+
+**权限：** admin
 
 ---
 
@@ -782,6 +945,30 @@
   "total": 50
 }
 ```
+
+### GET /api/monitor/network
+
+获取网络流量信息（读取 /proc/net/dev 实时数据）
+
+**成功响应 (200)：**
+```json
+[
+  {
+    "name": "eth0",
+    "rxBytes": 1234567890,
+    "rxPackets": 1000000,
+    "rxErrors": 0,
+    "rxDrop": 0,
+    "txBytes": 987654321,
+    "txPackets": 800000,
+    "txErrors": 0,
+    "txDrop": 0,
+    "speed": "1000 Mbps"
+  }
+]
+```
+
+**响应说明：** 返回所有非 loopback 网络接口的收发统计，speed 字段需要 /sys/class/net/*/speed 支持
 
 ### POST /api/monitor/errors
 
