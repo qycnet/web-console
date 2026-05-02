@@ -185,7 +185,7 @@ cp .env.example .env
 npm install -g pm2
 
 # 启动服务
-pm2 start npm --name "openclaw-console" -- start
+pm2 start npm --name "web-console" -- start
 
 # 开机自启
 pm2 save
