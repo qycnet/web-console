@@ -6,7 +6,8 @@
       <div
         v-for="agent in filteredAgents"
         :key="agent.id"
-        :class="['agent-item', { selected: selectedIds.has(agent.id) }]"
+        :class="['agent-item', { selected: selectedIds.has(agent.id) }, { disabled: agent.disabled }]"
+        :style="agent.disabled ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' } : {}"
         @click="toggleAgent(agent)"
       >
         <span class="agent-check">
@@ -15,8 +16,8 @@
           </span>
         </span>
         <span class="agent-name">{{ agent.name }}</span>
-        <n-tag size="tiny" :type="agent.status === 'running' ? 'success' : 'default'">
-          {{ agent.status === 'running' ? '运行中' : '已停止' }}
+        <n-tag size="tiny" :type="agent.disabled ? 'default' : 'success'">
+          {{ agent.disabled ? '已禁用' : '已启用' }}
         </n-tag>
       </div>
       <div v-if="filteredAgents.length === 0" class="agent-empty">暂无匹配的 Agent</div>
