@@ -85,6 +85,11 @@ router.get('/:agentId/chat/stream', async (req: Request, res: Response) => {
     let agentConfig: AgentChatConfig
 
     if (agentInfo) {
+      // 检查是否被禁用
+      if ((agentInfo as any).disabled) {
+        res.status(403).json({ error: '该 Agent 已被禁用，无法发起对话' })
+        return
+      }
       agentConfig = {
         id: agentInfo.id,
         name: agentInfo.name,
@@ -184,51 +189,51 @@ router.get('/:agentId', async (req: Request, res: Response) => {
 
 /**
  * POST /api/agents/:agentId/start
- * 启动 Agent
+ * 启用 Agent（将 start 重新定义为"启用"，调 enableAgent）
  */
 router.post('/:agentId/start',
   requireRole('admin'),
   auditLog('agent:start'),
   async (req: Request, res: Response) => {
     try {
-      await openclawService.startAgent(req.params.agentId)
-      res.json({ message: 'Agent 启动中...' })
+      await openclawService.enableAgent(req.params.agentId)
+      res.json({ success: true, message: 'Agent 已启用' })
     } catch (error) {
-      logger.error('Failed to start agent:', error)
-      res.status(500).json({ error: '启动 Agent 失败' })
+      logger.error('Failed to enable agent:', error)
+      res.status(500).json({ error: '启用 Agent 失败' })
     }
   }
 )
 
 /**
  * POST /api/agents/:agentId/stop
- * 停止 Agent
+ * 禁用 Agent（将 stop 重新定义为"禁用"，调 disableAgent）
  */
 router.post('/:agentId/stop',
   requireRole('admin'),
   auditLog('agent:stop'),
   async (req: Request, res: Response) => {
     try {
-      await openclawService.stopAgent(req.params.agentId)
-      res.json({ message: 'Agent 停止中...' })
+      await openclawService.disableAgent(req.params.agentId)
+      res.json({ success: true, message: 'Agent 已禁用' })
     } catch (error) {
-      logger.error('Failed to stop agent:', error)
-      res.status(500).json({ error: '停止 Agent 失败' })
+      logger.error('Failed to disable agent:', error)
+      res.status(500).json({ error: '禁用 Agent 失败' })
     }
   }
 )
 
 /**
  * POST /api/agents/:agentId/restart
- * 重启 Agent
+ * 先禁用再启用（等价"重启"语义）
  */
 router.post('/:agentId/restart',
   requireRole('admin'),
   auditLog('agent:restart'),
   async (req: Request, res: Response) => {
     try {
-      await openclawService.restartAgent(req.params.agentId)
-      res.json({ message: 'Agent 重启中...' })
+      await openclawService.restartAgent2(req.params.agentId)
+      res.json({ success: true, message: 'Agent 已重启' })
     } catch (error) {
       logger.error('Failed to restart agent:', error)
       res.status(500).json({ error: '重启 Agent 失败' })

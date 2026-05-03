@@ -208,6 +208,7 @@ interface Agent {
   description: string
   model: string
   status: 'running' | 'stopped' | 'error'
+  disabled?: boolean            // 是否被禁用
   skills: string[]
   createdAt: string
   updatedAt?: string
@@ -300,8 +301,8 @@ function getStatusType(status?: string) {
 
 function getStatusText(status?: string) {
   switch (status) {
-    case 'running': return '运行中'
-    case 'stopped': return '已停止'
+    case 'running': return '已启用'
+    case 'stopped': return '已禁用'
     case 'error': return '错误'
     case 'pending': return '任务中...'
     default: return '未知'
@@ -537,26 +538,33 @@ function openEditModal() {
 async function handleStart(agent: Agent) {
   try {
     await api.agents.start(agent.id)
+    agent.disabled = false
     agent.status = 'running'
-    message.success('Agent 已启动')
+    message.success('Agent 已启用')
   } catch (err: any) {
-    message.error(err?.error || '启动失败')
+    if (err?.status === 403) {
+      message.warning('该 Agent 已被禁用，无法对话')
+    } else {
+      message.error(err?.error || '启用失败')
+    }
   }
 }
 
 async function handleStop(agent: Agent) {
   try {
     await api.agents.stop(agent.id)
+    agent.disabled = true
     agent.status = 'stopped'
-    message.success('Agent 已停止')
+    message.success('Agent 已禁用')
   } catch (err: any) {
-    message.error(err?.error || '停止失败')
+    message.error(err?.error || '禁用失败')
   }
 }
 
 async function handleRestart(agent: Agent) {
   try {
     await api.agents.restart(agent.id)
+    agent.disabled = false
     agent.status = 'running'
     message.success('Agent 已重启')
   } catch (err: any) {

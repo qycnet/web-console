@@ -32,6 +32,9 @@ export interface AgentInfo {
   avatar?: string           // emoji/头像URL
   theme?: string            // 主题色
 
+  // === 新字段：启停 ===
+  disabled?: boolean         // 是否被禁用
+
   // === 新字段：会话统计 ===
   sessionCount?: number
   lastActiveAt?: string
@@ -213,6 +216,7 @@ class OpenClawService extends EventEmitter {
           id: a.id || '',
           name: a.name || a.id || reg?.name || '未知',
           status: 'stopped',                 // 从 config.json 读不到实时状态，默认 stopped
+          disabled: a.disabled ?? false,      // 启用/禁用状态
           model,
           skills: a.skills || reg?.skills || [],
           workspace: reg?.workspace,
@@ -243,6 +247,7 @@ class OpenClawService extends EventEmitter {
           id,
           name: reg.name || id,
           status: 'stopped',
+          disabled: false,                    // 未在 agents.list 中的视为启用
           model,
           skills: reg.skills || [],
           workspace: reg.workspace,
@@ -514,8 +519,49 @@ class OpenClawService extends EventEmitter {
   }
 
   // ==========================================================================
-  // Agent 生命周期：启动/停止/重启
+  // Agent 生命周期：启动/停止/重启 → 启用/禁用语义
   // ==========================================================================
+
+  /**
+   * 启用 Agent：从 config.json 的 agents.list 中移除 disabled 标记
+   */
+  async enableAgent(agentId: string): Promise<void> {
+    logger.info(`Enabling agent: ${agentId}`)
+    try {
+      await this._updateAgentInConfig(agentId, { disabled: false })
+      logger.info(`Agent ${agentId} enabled`)
+      this.emit('agent:started', { agentId })
+    } catch (error) {
+      logger.error(`Failed to enable agent ${agentId}:`, error)
+      throw error
+    }
+  }
+
+  /**
+   * 禁用 Agent：在 config.json 的 agents.list 中设置 disabled: true
+   */
+  async disableAgent(agentId: string): Promise<void> {
+    logger.info(`Disabling agent: ${agentId}`)
+    try {
+      await this._updateAgentInConfig(agentId, { disabled: true })
+      logger.info(`Agent ${agentId} disabled`)
+      this.emit('agent:stopped', { agentId })
+    } catch (error) {
+      logger.error(`Failed to disable agent ${agentId}:`, error)
+      throw error
+    }
+  }
+
+  /**
+   * 重启 Agent：先禁用再启用
+   */
+  async restartAgent2(agentId: string): Promise<void> {
+    await this.disableAgent(agentId)
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    await this.enableAgent(agentId)
+  }
+
+  // 以下方法保留，但不被 routes 调用（兼容旧调用者）
   async startAgent(agentId: string): Promise<void> {
     logger.info(`Starting agent: ${agentId}`)
     const child = spawn('openclaw', ['agent', 'start', agentId], {
