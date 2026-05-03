@@ -262,7 +262,8 @@ export const api = {
     sessions: (activeOnly?: boolean) => instance.get('/devices/sessions', { params: { active: activeOnly } }),
     endSession: (sessionId: string) => instance.post(`/devices/sessions/${sessionId}/end`),
     userDevices: (userId: string) => instance.get(`/devices/user/${userId}`),
-    revokeUser: (userId: string) => instance.post(`/devices/user/${userId}/revoke`)
+    revokeUser: (userId: string) => instance.post(`/devices/user/${userId}/revoke`),
+    register: (data?: any) => instance.post('/devices/register', data)
   }
 }
 
