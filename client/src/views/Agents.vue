@@ -398,7 +398,7 @@ const columns: DataTableColumns<Agent> = [
             disabled: isPending,
             onClick: () => handleView(row)
           }, { icon: () => h(NIcon, { component: SettingsOutline }) }),
-          row.status === 'running' ?
+          !row.disabled ?
             h(NButton, {
               size: 'small',
               quaternary: true,
