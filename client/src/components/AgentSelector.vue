@@ -1,5 +1,5 @@
 <template>
-  <n-modal v-model:show="visible" preset="card" title="选择 Agent" style="width: 400px;">
+  <n-modal :show="visible" preset="card" title="选择 Agent" style="width: 400px;" @update:show="onShowUpdate">
     <n-input v-model:value="searchText" placeholder="搜索 Agent..." style="margin-bottom: 12px;" />
     <div class="agent-list">
       <div
@@ -41,6 +41,13 @@ const filteredAgents = computed(() => {
     (a: any) => a.name.toLowerCase().includes(kw) || a.id.toLowerCase().includes(kw)
   )
 })
+
+function onShowUpdate(val: boolean) {
+  if (!val) {
+    emit('update:visible', false)
+    searchText.value = ''
+  }
+}
 
 function selectAgent(agent: any) {
   emit('select', agent)

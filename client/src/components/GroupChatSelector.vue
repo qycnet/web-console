@@ -1,5 +1,5 @@
 <template>
-  <n-modal v-model:show="visible" preset="card" title="创建群聊" style="width: 450px;">
+  <n-modal :show="visible" preset="card" title="创建群聊" style="width: 450px;" @update:show="close">
     <div class="group-hint">选择多个 Agent 加入群聊，他们将协作回答你的问题</div>
     <n-input v-model:value="searchText" placeholder="搜索 Agent..." style="margin-bottom: 12px;" />
     <div class="agent-list">
