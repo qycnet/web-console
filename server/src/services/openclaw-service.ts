@@ -74,6 +74,7 @@ class OpenClawService extends EventEmitter {
   private configPath: string
   private agentsDataDir: string
   private registryPath: string
+  private disabledStatePath: string           // 禁用状态独立文件
   private agents: Map<string, AgentInfo> = new Map()
   private openclawProcess: ChildProcess | null = null
   private isInitialized: boolean = false
@@ -85,6 +86,28 @@ class OpenClawService extends EventEmitter {
     // web-console 自己的 Agent 数据目录（存放角色 workspace）
     this.agentsDataDir = path.join(process.cwd(), 'data', 'agents')
     this.registryPath = path.join(this.agentsDataDir, 'registry.json')
+    // 禁用状态独立文件（不受 OpenClaw config.json 覆盖影响）
+    this.disabledStatePath = path.join(process.cwd(), 'data', 'agent-disabled.json')
+  }
+
+  /**
+   * 读取禁用状态映射表
+   */
+  private async getDisabledMap(): Promise<Record<string, boolean>> {
+    try {
+      if (await fs.pathExists(this.disabledStatePath)) {
+        return await fs.readJson(this.disabledStatePath)
+      }
+    } catch {}
+    return {}
+  }
+
+  /**
+   * 写入禁用状态映射表
+   */
+  private async saveDisabledMap(map: Record<string, boolean>): Promise<void> {
+    await fs.ensureDir(path.dirname(this.disabledStatePath))
+    await fs.writeJson(this.disabledStatePath, map, { spaces: 2 })
   }
 
   /**
@@ -198,6 +221,7 @@ class OpenClawService extends EventEmitter {
       const config = await this.getConfig()
       const registry = await this.getRegistry()
       const list: any[] = config?.agents?.list || []
+      const disabledMap = await this.getDisabledMap()
 
       const result: AgentInfo[] = []
 
@@ -216,7 +240,7 @@ class OpenClawService extends EventEmitter {
           id: a.id || '',
           name: a.name || a.id || reg?.name || '未知',
           status: 'stopped',                 // 从 config.json 读不到实时状态，默认 stopped
-          disabled: a.disabled ?? false,      // 启用/禁用状态
+          disabled: disabledMap[a.id] ?? false, // 从独立文件读取，不受 config.json 覆盖影响
           model,
           skills: a.skills || reg?.skills || [],
           workspace: reg?.workspace,
@@ -523,12 +547,14 @@ class OpenClawService extends EventEmitter {
   // ==========================================================================
 
   /**
-   * 启用 Agent：从 config.json 的 agents.list 中移除 disabled 标记
+   * 启用 Agent：从独立禁用状态文件中移除
    */
   async enableAgent(agentId: string): Promise<void> {
     logger.info(`Enabling agent: ${agentId}`)
     try {
-      await this._updateAgentInConfig(agentId, { disabled: false })
+      const map = await this.getDisabledMap()
+      delete map[agentId]
+      await this.saveDisabledMap(map)
       logger.info(`Agent ${agentId} enabled`)
       this.emit('agent:started', { agentId })
     } catch (error) {
@@ -538,12 +564,14 @@ class OpenClawService extends EventEmitter {
   }
 
   /**
-   * 禁用 Agent：在 config.json 的 agents.list 中设置 disabled: true
+   * 禁用 Agent：写入独立禁用状态文件
    */
   async disableAgent(agentId: string): Promise<void> {
     logger.info(`Disabling agent: ${agentId}`)
     try {
-      await this._updateAgentInConfig(agentId, { disabled: true })
+      const map = await this.getDisabledMap()
+      map[agentId] = true
+      await this.saveDisabledMap(map)
       logger.info(`Agent ${agentId} disabled`)
       this.emit('agent:stopped', { agentId })
     } catch (error) {
