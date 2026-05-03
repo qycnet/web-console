@@ -137,8 +137,15 @@ router.post('/user/:userId/revoke',
  */
 router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { ip, userAgent, userId, username, sessionId } = req.body
-    const result = deviceService.registerDevice({ ip, userAgent, userId, username, sessionId })
+    // 从请求上下文中推断设备信息，不依赖前端传参
+    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
+             || req.ip
+             || req.socket?.remoteAddress
+             || ''
+    const userAgent = req.headers['user-agent'] || ''
+    const userId = req.body?.userId || (req as any).user?.userId || ''
+    const username = req.body?.username || ''
+    const result = deviceService.registerDevice({ ip, userAgent, userId, username })
     res.json(result)
   } catch (error) {
     logger.error('Failed to register device:', error)
