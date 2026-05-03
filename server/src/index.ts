@@ -1,4 +1,5 @@
 import express from 'express'
+import path from 'path'
 import cors from 'cors'
 import helmet from 'helmet'
 import { createServer } from 'http'
@@ -189,6 +190,11 @@ openclawService.on('agent:stopped', (data) => {
 
 openclawService.on('agent:error', (data) => {
   io.to('agents').emit('agent:error', data)
+})
+
+// SPA fallback — 所有前端路由返回 index.html，由 Vue Router 解析
+app.get('*', (req, res) => {
+  res.sendFile(path.resolve('public/index.html'))
 })
 
 // Error handler
