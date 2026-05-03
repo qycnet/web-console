@@ -56,7 +56,7 @@ const existingCols = new Set(usersColumns.map((c: any) => c.name))
 const missingCols: { name: string; def: string }[] = [
   { name: 'email', def: 'TEXT' },
   { name: 'status', def: "TEXT DEFAULT 'active'" },
-  { name: 'updated_at', def: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+  { name: 'updated_at', def: 'DATETIME' },
   { name: 'last_login_at', def: 'DATETIME' },
   { name: 'login_count', def: 'INTEGER DEFAULT 0' },
 ]
