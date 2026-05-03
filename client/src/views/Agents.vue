@@ -22,8 +22,8 @@
       <template #header>
         <n-space align="center">
           <span>{{ selectedAgent?.name }}</span>
-          <n-tag :type="getStatusType(selectedAgent?.status)">
-            {{ getStatusText(selectedAgent?.status) }}
+          <n-tag :type="getStatusType(selectedAgent)">
+            {{ getStatusText(selectedAgent) }}
           </n-tag>
           <n-button size="tiny" quaternary @click="() => selectedAgent && goChat(selectedAgent)">💬 对话</n-button>
           <n-button size="tiny" quaternary @click="openEditModal">编辑</n-button>
@@ -36,8 +36,8 @@
             <n-descriptions :column="2" bordered>
             <n-descriptions-item label="ID">{{ selectedAgent?.id }}</n-descriptions-item>
             <n-descriptions-item label="状态">
-              <n-tag :type="getStatusType(selectedAgent?.status)">
-                {{ getStatusText(selectedAgent?.status) }}
+              <n-tag :type="getStatusType(selectedAgent)">
+                {{ getStatusText(selectedAgent) }}
               </n-tag>
             </n-descriptions-item>
             <n-descriptions-item label="模型">{{ selectedAgent?.model }}</n-descriptions-item>
@@ -282,31 +282,21 @@ let taskPollTimer: ReturnType<typeof setInterval> | null = null
 const hasPendingTasks = computed(() => pendingTasks.value.size > 0)
 
 /**
- * 获取 Agent 在某个操作类型的任务中时返回 'pending'，否则返回原状态
+ * 获取 Agent 状态类型（用于 NTag 颜色）
  */
-function getAgentStatus(agent: Agent): string {
-  if (pendingTasks.value.has(agent.id)) return 'pending'
-  return agent.status
+function getStatusType(agent?: { disabled?: boolean; status?: string } | null) {
+  if (!agent) return 'default'
+  // 直接用 disabled 字段判断，不走 status
+  return agent.disabled ? 'default' : 'success'
 }
 
-function getStatusType(status?: string) {
-  switch (status) {
-    case 'running': return 'success'
-    case 'stopped': return 'default'
-    case 'error': return 'error'
-    case 'pending': return 'warning'
-    default: return 'default'
-  }
-}
-
-function getStatusText(status?: string) {
-  switch (status) {
-    case 'running': return '已启用'
-    case 'stopped': return '已禁用'
-    case 'error': return '错误'
-    case 'pending': return '任务中...'
-    default: return '未知'
-  }
+/**
+ * 获取 Agent 状态文字描述
+ */
+function getStatusText(agent?: { disabled?: boolean; status?: string } | null) {
+  if (!agent) return '未知'
+  if (agent.disabled) return '已禁用'
+  return '已启用'
 }
 
 /**
@@ -359,11 +349,20 @@ const columns: DataTableColumns<Agent> = [
     key: 'status',
     width: 120,
     render(row) {
-      const effStatus = getAgentStatus(row)
+      const isPending = pendingTasks.value.has(row.id)
       return h(NSpace, { align: 'center', size: 'small' }, {
         default: () => {
-          const items = [h(NTag, { type: getStatusType(effStatus) as any, size: 'small' }, { default: () => getStatusText(effStatus) })]
-          if (effStatus === 'pending') {
+          let type: string
+          let text: string
+          if (isPending) {
+            type = 'warning'
+            text = '任务中...'
+          } else {
+            type = getStatusType(row)
+            text = getStatusText(row)
+          }
+          const items = [h(NTag, { type: type as any, size: 'small' }, { default: () => text })]
+          if (isPending) {
             items.push(h(NSpin, { size: 'small' }))
           }
           return items
