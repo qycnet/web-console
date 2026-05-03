@@ -91,7 +91,8 @@ import {
   MoonOutline,
   SunnyOutline,
   LogOutOutline,
-  PhonePortraitOutline
+  PhonePortraitOutline,
+  ChatbubblesOutline
 } from '@vicons/ionicons5'
 import { useThemeStore } from '@/stores/theme'
 import { useUserStore } from '@/stores/user'
@@ -134,6 +135,12 @@ const baseMenuOptions: any[] = [
     key: 'agents',
     type: 'default' as const,
     icon: () => h(NIcon, null, { default: () => h(RocketOutline) })
+  },
+  {
+    label: '对话',
+    key: 'chat',
+    type: 'default' as const,
+    icon: () => h(NIcon, null, { default: () => h(ChatbubblesOutline) })
   },
   {
     label: '用户管理',

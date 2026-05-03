@@ -76,6 +76,12 @@ const routes: RouteRecordRaw[] = [
         name: 'Providers',
         component: () => import('@/views/Providers.vue'),
         meta: { title: '供应商管理', icon: 'cloud', roles: ['admin'] }
+      },
+      {
+        path: 'chat',
+        name: 'Chat',
+        component: () => import('@/views/Chat.vue'),
+        meta: { title: '对话', icon: 'chatbubbles' }
       }
     ]
   }

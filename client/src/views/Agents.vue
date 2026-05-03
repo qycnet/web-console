@@ -25,6 +25,7 @@
           <n-tag :type="getStatusType(selectedAgent?.status)">
             {{ getStatusText(selectedAgent?.status) }}
           </n-tag>
+          <n-button size="tiny" quaternary @click="goChat">💬 对话</n-button>
           <n-button size="tiny" quaternary @click="openEditModal">编辑</n-button>
         </n-space>
       </template>
@@ -62,73 +63,6 @@
             </n-tag>
             <n-button size="tiny" quaternary @click="showAddSkill = true">+ 添加</n-button>
           </n-space>
-          </div>
-        </n-tab-pane>
-
-        <n-tab-pane name="chat" tab="对话">
-          <div class="chat-container">
-            <div class="chat-toolbar">
-              <n-space align="center">
-                <n-button size="tiny" quaternary @click="loadSessions">
-                  <template #icon><n-icon :component="ChatbubbleOutline" /></template>
-                  会话
-                </n-button>
-                <n-dropdown v-if="sessions.length > 0" trigger="click" :options="sessionOptions" @select="handleSelectSession">
-                  <n-button size="tiny" quaternary>
-                    {{ currentSessionId ? (currentSessionTitle || currentSessionId.substring(0, 8)) : '选择会话' }}
-                  </n-button>
-                </n-dropdown>
-                <n-button v-if="currentSessionId" size="tiny" quaternary type="warning" @click="handleNewSession">
-                  新会话
-                </n-button>
-                <!-- 搜索按钮 -->
-                <n-button v-if="currentSessionId" size="tiny" quaternary @click="showSearch = !showSearch">
-                  <template #icon><n-icon :component="SearchOutline" /></template>
-                  搜索
-                </n-button>
-                <!-- 导出按钮 -->
-                <n-dropdown v-if="currentSessionId" trigger="click" :options="exportOptions" @select="handleExportSession">
-                  <n-button size="tiny" quaternary>
-                    <template #icon><n-icon :component="DownloadOutline" /></template>
-                    导出
-                  </n-button>
-                </n-dropdown>
-                <!-- 删除会话按钮 -->
-                <n-button v-if="currentSessionId" size="tiny" quaternary type="error" @click="handleDeleteSession">
-                  <template #icon><n-icon :component="TrashOutline" /></template>
-                </n-button>
-                <n-tag v-if="isStreaming" type="warning" size="small">正在生成...</n-tag>
-              </n-space>
-            </div>
-            <!-- 搜索栏 -->
-            <div v-if="showSearch" class="search-bar">
-              <n-input-group>
-                <n-input v-model:value="searchKeyword" placeholder="搜索对话内容..." @keyup.enter="handleSearchMessages" />
-                <n-button type="primary" ghost @click="handleSearchMessages">搜索</n-button>
-                <n-button v-if="searchResults.length > 0" quaternary @click="clearSearch">清除</n-button>
-              </n-input-group>
-              <div v-if="searchResults.length > 0" class="search-results">
-                <p style="margin: 4px 0; font-size: 12px; color: var(--n-text-color-3);">
-                  找到 {{ searchResults.length }} 条结果
-                </p>
-                <div v-for="(r, i) in searchResults.slice(0, 20)" :key="i" class="search-result-item">
-                  <n-tag size="tiny" :type="r.role === 'user' ? 'primary' : 'success'" style="margin-right: 4px;">
-                    {{ r.role === 'user' ? '用户' : 'AI' }}
-                  </n-tag>
-                  <span style="font-size: 12px;">{{ r.content.substring(0, 60) }}{{ r.content.length > 60 ? '...' : '' }}</span>
-                </div>
-              </div>
-            </div>
-            <div class="messages" ref="messagesRef">
-              <div v-for="msg in messages" :key="msg.id" :class="['message', msg.role]">
-                <div class="message-content">{{ msg.content }}<span v-if="msg.role === 'assistant' && msg === messages[messages.length - 1] && isStreaming" class="cursor-blink">▍</span></div>
-                <div class="message-time">{{ msg.time }}</div>
-              </div>
-            </div>
-            <n-input-group>
-              <n-input v-model:value="chatInput" placeholder="输入消息..." :disabled="isStreaming" @keyup.enter="handleSendMessage" />
-              <n-button type="primary" @click="handleSendMessage" :disabled="isStreaming" :loading="isStreaming">发送</n-button>
-            </n-input-group>
           </div>
         </n-tab-pane>
 
@@ -233,6 +167,7 @@
 
 <script setup lang="ts">
 import { ref, h, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   NCard,
   NDataTable,
@@ -264,7 +199,7 @@ import {
   PlayOutline,
   StopOutline,
   RefreshOutline,
-  ChatbubbleOutline,
+  SettingsOutline,
   TrashOutline,
   SearchOutline,
   DownloadOutline
@@ -480,7 +415,7 @@ const columns: DataTableColumns<Agent> = [
             quaternary: true,
             disabled: isPending,
             onClick: () => handleView(row)
-          }, { icon: () => h(NIcon, { component: ChatbubbleOutline }) }),
+          }, { icon: () => h(NIcon, { component: SettingsOutline }) }),
           row.status === 'running' ?
             h(NButton, {
               size: 'small',
@@ -588,6 +523,10 @@ async function loadAvailableSkills() {
       value: s.id || s.name
     }))
   } catch {}
+}
+
+function goChat(agent: Agent) {
+  router.push({ path: '/chat', query: { agentId: agent.id } })
 }
 
 function handleView(agent: Agent) {
