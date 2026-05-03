@@ -138,8 +138,8 @@ router.post('/group', async (req: Request, res: Response) => {
   }
 
   // 设置会话标题（以第一条消息截取）
-  const session = database.getSession(sessionId)
-  if (session && !session.title) {
+  const currentSession = database.getSession(sessionId)
+  if (currentSession && !currentSession.title) {
     const title = message.length > 25 ? message.substring(0, 25) + '...' : message
     database.updateSessionTitle(sessionId, `群聊: ${title}`)
   }
