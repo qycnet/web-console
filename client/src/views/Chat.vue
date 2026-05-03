@@ -140,7 +140,7 @@ watch(
 
 // 滚动到底部
 watch(
-  () => chatStore.activeTab?.messages.length,
+  () => chatStore.activeTab?.messages.length ?? 0,
   async () => {
     await nextTick()
     if (messagesRef.value) {

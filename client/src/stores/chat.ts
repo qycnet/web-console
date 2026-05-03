@@ -144,12 +144,5 @@ export const useChatStore = defineStore('chat', {
         if (tab) tab.unreadCount = 0
       }
     }
-  },
-
-  // 持久化到 localStorage
-  persist: {
-    key: 'chat-state',
-    storage: localStorage,
-    paths: ['tabs', 'activeTabId', 'isMinimized']
   }
 })
