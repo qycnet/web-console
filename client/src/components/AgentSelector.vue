@@ -20,7 +20,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { NModal, NInput, NTag, useMessage } from 'naive-ui'
+import { NModal, NInput, NTag } from 'naive-ui'
 import { api } from '@/api'
 
 const props = defineProps<{
@@ -32,7 +32,6 @@ const emit = defineEmits<{
   'select': [agent: any]
 }>()
 
-const message = useMessage()
 const searchText = ref('')
 const agents = ref<any[]>([])
 

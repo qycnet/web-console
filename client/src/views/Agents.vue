@@ -25,7 +25,7 @@
           <n-tag :type="getStatusType(selectedAgent?.status)">
             {{ getStatusText(selectedAgent?.status) }}
           </n-tag>
-          <n-button size="tiny" quaternary @click="goChat">💬 对话</n-button>
+          <n-button size="tiny" quaternary @click="() => selectedAgent && goChat(selectedAgent)">💬 对话</n-button>
           <n-button size="tiny" quaternary @click="openEditModal">编辑</n-button>
         </n-space>
       </template>
@@ -181,7 +181,6 @@ import {
   NDescriptions,
   NDescriptionsItem,
   NDivider,
-  NInputGroup,
   NInput,
   NLog,
   NForm,
@@ -189,7 +188,6 @@ import {
   NSelect,
   NInputNumber,
   NSpin,
-  NDropdown,
   useMessage,
   useDialog,
   type DataTableColumns
@@ -200,9 +198,7 @@ import {
   StopOutline,
   RefreshOutline,
   SettingsOutline,
-  TrashOutline,
-  SearchOutline,
-  DownloadOutline
+  TrashOutline
 } from '@vicons/ionicons5'
 import { api } from '@/api'
 
@@ -242,28 +238,7 @@ const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showAddSkill = ref(false)
 const selectedAgent = ref<Agent | null>(null)
-const chatInput = ref('')
-const messages = ref<any[]>([])
 const agentLogs = ref('')
-let streamSource: EventSource | null = null
-const currentSessionId = ref('')
-const currentSessionTitle = ref('')
-const currentReply = ref('')
-const isStreaming = ref(false)
-const sessions = ref<any[]>([])
-const showSearch = ref(false)
-const searchKeyword = ref('')
-const searchResults = ref<any[]>([])
-const exportOptions = ref([
-  { label: '导出为 JSON', value: 'json' },
-  { label: '导出为 Markdown', value: 'markdown' }
-])
-const sessionOptions = computed(() => {
-  return sessions.value.map(s => ({
-    label: s.title || s.id.substring(0, 12) + '...',
-    value: s.id
-  }))
-})
 
 const createForm = ref({ name: '', model: '', workspace: '', persona: '', provider: '', temperature: null as number | null, maxTokens: null as number | null, description: '' })
 
@@ -538,138 +513,8 @@ function goChat(agent: Agent) {
 
 function handleView(agent: Agent) {
   selectedAgent.value = agent
-  messages.value = []
-  chatInput.value = ''
-  currentSessionId.value = ''
-  currentSessionTitle.value = ''
-  currentReply.value = ''
-  isStreaming.value = false
   agentLogs.value = `[INFO] Agent ${agent.name} loaded\n[INFO] Status: ${agent.status}\n[INFO] Model: ${agent.model}`
   showDetail.value = true
-  loadSessions()
-}
-
-async function loadSessions() {
-  if (!selectedAgent.value) return
-  try {
-    sessions.value = await api.agents.sessions.list(selectedAgent.value.id, 20)
-  } catch { /* ignore */ }
-}
-
-function handleSelectSession(sessionId: string) {
-  currentSessionId.value = sessionId
-  const session = sessions.value.find(s => s.id === sessionId)
-  currentSessionTitle.value = session?.title || ''
-  // 加载会话消息
-  if (selectedAgent.value) {
-    api.agents.sessions.get(selectedAgent.value.id, sessionId)
-      .then((data: any) => {
-        if (data.messages) {
-          messages.value = data.messages.map((m: any, i: number) => ({
-            id: i,
-            role: m.role === 'user' ? 'user' : 'assistant',
-            content: m.content,
-            time: m.created_at || ''
-          }))
-        }
-      })
-      .catch(() => { /* ignore */ })
-  }
-}
-
-function handleNewSession() {
-  currentSessionId.value = ''
-  currentSessionTitle.value = ''
-  messages.value = []
-  currentReply.value = ''
-}
-
-async function handleSearchMessages() {
-  if (!searchKeyword.value.trim() || !selectedAgent.value || !currentSessionId.value) return
-  try {
-    const data = await api.agents.sessions.get(selectedAgent.value.id, currentSessionId.value) as any
-    const allMessages = data.messages || []
-    const kw = searchKeyword.value.toLowerCase()
-    searchResults.value = allMessages.filter((m: any) =>
-      m.content.toLowerCase().includes(kw)
-    )
-    if (searchResults.value.length === 0) {
-      message.info('未找到匹配的消息')
-    }
-  } catch {
-    message.error('搜索失败')
-  }
-}
-
-function clearSearch() {
-  searchKeyword.value = ''
-  searchResults.value = []
-  showSearch.value = false
-}
-
-async function handleExportSession(value: string) {
-  if (!selectedAgent.value || !currentSessionId.value) return
-  try {
-    if (value === 'json') {
-      const data = await api.agents.sessions.get(selectedAgent.value.id, currentSessionId.value) as any
-      const exportData = {
-        session: { id: currentSessionId.value, agentId: selectedAgent.value.id },
-        messages: (data.messages || []).map((m: any) => ({
-          role: m.role,
-          content: m.content,
-          createdAt: m.created_at
-        })),
-        exportedAt: new Date().toISOString()
-      }
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `session-${currentSessionId.value.substring(0, 8)}.json`
-      a.click()
-      URL.revokeObjectURL(url)
-      message.success('已导出为 JSON')
-    } else if (value === 'markdown') {
-      const data = await api.agents.sessions.get(selectedAgent.value.id, currentSessionId.value) as any
-      const messages = data.messages || []
-      let md = `# ${currentSessionTitle.value || '对话记录'}\n\n`
-      md += `> Agent: **${selectedAgent.value.name}** · 导出时间: ${new Date().toISOString()}\n\n---\n\n`
-      for (const m of messages) {
-        const roleLabel = m.role === 'user' ? '👤 用户' : '🤖 AI'
-        md += `### ${roleLabel}\n\n${m.content}\n\n`
-      }
-      const blob = new Blob([md], { type: 'text/markdown' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `session-${currentSessionId.value.substring(0, 8)}.md`
-      a.click()
-      URL.revokeObjectURL(url)
-      message.success('已导出为 Markdown')
-    }
-  } catch {
-    message.error('导出失败')
-  }
-}
-
-async function handleDeleteSession() {
-  if (!selectedAgent.value || !currentSessionId.value) return
-  dialog.warning({
-    title: '确认删除',
-    content: '确定要删除此会话吗？此操作不可撤消。',
-    positiveText: '删除',
-    negativeText: '取消',
-    onPositiveClick: async () => {
-      try {
-        await api.agents.sessions.delete(selectedAgent.value!.id, currentSessionId.value)
-        message.success('会话已删除')
-        handleNewSession()
-        loadSessions()
-      } catch {
-        message.error('删除会话失败')
-      }
-    }
-  })
 }
 
 function openEditModal() {

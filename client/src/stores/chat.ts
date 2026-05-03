@@ -210,7 +210,7 @@ export const useChatStore = defineStore('chat', {
       const token = localStorage.getItem('token')
 
       try {
-        const response = await axios.post('/api/chat/group', {
+        await axios.post('/api/chat/group', {
           agentIds: tab.agentIds,
           message: text,
           sessionId: tab.sessionId || undefined
