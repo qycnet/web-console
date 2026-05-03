@@ -22,6 +22,7 @@ import monitorRoutes from './routes/monitor.js'
 import alertsRoutes from './routes/alerts.js'
 import devicesRoutes from './routes/devices.js'
 import tasksRoutes from './routes/tasks.js'
+import chatRoutes from './routes/chat.js'
 
 config()
 
@@ -86,6 +87,7 @@ app.use('/api/users', usersRoutes)
 app.use('/api/monitor', monitorRoutes)
 app.use('/api/alerts', alertsRoutes)
 app.use('/api/devices', devicesRoutes)
+app.use('/api/chat', chatRoutes)
 app.use('/api/tasks', tasksRoutes)
 
 // Health check

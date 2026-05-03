@@ -140,6 +140,12 @@ export const api = {
     toggle: (skillId: string, enabled: boolean) => instance.put(`/skills/${skillId}/toggle`, { enabled })
   },
 
+  // ====== 群聊多 Agent 协作 ======
+  chat: {
+    group: (data: { agentIds: string[]; message: string; sessionId?: string }) =>
+      instance.post('/chat/group', data),
+  },
+
   agents: {
     list: () => instance.get('/agents'),
     get: (agentId: string) => instance.get(`/agents/${agentId}`),

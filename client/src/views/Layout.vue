@@ -60,6 +60,7 @@
         </router-view>
       </n-layout-content>
     </n-layout>
+    <ChatFloat />
   </n-layout>
 </template>
 
@@ -96,6 +97,7 @@ import {
 } from '@vicons/ionicons5'
 import { useThemeStore } from '@/stores/theme'
 import { useUserStore } from '@/stores/user'
+import ChatFloat from '@/components/ChatFloat.vue'
 
 const router = useRouter()
 const route = useRoute()

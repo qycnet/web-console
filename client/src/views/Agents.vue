@@ -202,7 +202,8 @@ import {
   SettingsOutline,
   TrashOutline,
   SearchOutline,
-  DownloadOutline
+  DownloadOutline,
+  InformationCircleOutline
 } from '@vicons/ionicons5'
 import { api } from '@/api'
 
@@ -410,6 +411,12 @@ const columns: DataTableColumns<Agent> = [
       const isPending = pendingTasks.value.has(row.id)
       return h(NSpace, null, {
         default: () => [
+          h(NButton, {
+            size: 'small',
+            quaternary: true,
+            disabled: isPending,
+            onClick: () => goChat(row)
+          }, { default: () => '详情' }),
           h(NButton, {
             size: 'small',
             quaternary: true,
