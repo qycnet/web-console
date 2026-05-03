@@ -50,6 +50,23 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id);
 `)
 
+// == 数据库迁移：补齐 users 表缺失的列（兼容旧的表结构） ==
+const usersColumns = db.prepare("PRAGMA table_info('users')").all() as any[]
+const existingCols = new Set(usersColumns.map((c: any) => c.name))
+const missingCols: { name: string; def: string }[] = [
+  { name: 'email', def: 'TEXT' },
+  { name: 'status', def: "TEXT DEFAULT 'active'" },
+  { name: 'updated_at', def: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+  { name: 'last_login_at', def: 'DATETIME' },
+  { name: 'login_count', def: 'INTEGER DEFAULT 0' },
+]
+for (const col of missingCols) {
+  if (!existingCols.has(col.name)) {
+    db.exec(`ALTER TABLE users ADD COLUMN ${col.name} ${col.def}`)
+    console.log(`Database migration: added column ${col.name} to users table`)
+  }
+}
+
 // 初始化默认管理员账户（通过 ADMIN_PASSWORD 环境变量设置，否则随机生成并打印）
 const adminExists = db.prepare('SELECT id FROM users WHERE username = ?').get('admin')
 if (!adminExists) {
