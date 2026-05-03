@@ -16,7 +16,10 @@ declare module '@vicons/ionicons5' {
   export const PhoneLandscapeOutline: Icon
 
   // 已有图标补齐
+  export const AddOutline: Icon
   export const AppsOutline: Icon
+  export const ChatbubbleOutline: Icon
+  export const ChatbubblesOutline: Icon
   export const CloudUploadOutline: Icon
   export const CreateOutline: Icon
   export const DocumentOutline: Icon
@@ -25,11 +28,13 @@ declare module '@vicons/ionicons5' {
   export const FolderOutline: Icon
   export const FolderOpenOutline: Icon
   export const HomeOutline: Icon
+  export const InformationCircleOutline: Icon
   export const LogOutOutline: Icon
   export const MoonOutline: Icon
   export const PeopleOutline: Icon
   export const PersonOutline: Icon
   export const RefreshOutline: Icon
+  export const RemoveOutline: Icon
   export const RocketOutline: Icon
   export const SettingsOutline: Icon
   export const SpeedometerOutline: Icon

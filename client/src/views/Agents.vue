@@ -202,8 +202,7 @@ import {
   SettingsOutline,
   TrashOutline,
   SearchOutline,
-  DownloadOutline,
-  InformationCircleOutline
+  DownloadOutline
 } from '@vicons/ionicons5'
 import { api } from '@/api'
 
@@ -234,6 +233,7 @@ interface PendingOp {
 
 const message = useMessage()
 const dialog = useDialog()
+const router = useRouter()
 
 const agents = ref<Agent[]>([])
 const loading = ref(false)
