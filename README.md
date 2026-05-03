@@ -21,6 +21,10 @@ OpenClaw 的现代化 Web 管理界面，提供配置管理、文件操作、技
 | 🧵 **会话管理** | 历史会话 SQLite 持久化、会话切换、新会话/删除会话 |
 | 🔍 **对话搜索** | 会话内按关键词搜索历史消息 |
 | 📥 **对话导出** | 支持 JSON / Markdown 格式导出完整对话 |
+| 💬 **多 Tab 并行对话** | 同时打开多个 Agent 对话 Tab，独立 SSE 流，互不干扰 |
+| 🧩 **组件化架构** | ChatHeader/ChatTabBar/ChatPanel/AgentSelector 独立组件，易于扩展 |
+| 🔄 **最小化浮动窗** | 对话窗口可最小化，右下角浮动气泡，跨页面保持状态，未读消息计数 |
+| 👥 **群聊多 Agent 协作** | 选择多个 Agent 加入群聊，并发调用各 Agent 流式回复，按 Agent 分条展示 |
 | ⚡ **异步任务** | Agent 创建/编辑/删除异步执行（2 秒轮询，后台完成后自动刷新） |
 | 📊 **系统监控** | CPU/内存/磁盘、进程管理、实时日志推送 |
 | 📝 **代码编辑** | Monaco Editor、语法高亮、多语言支持 |
@@ -46,6 +50,7 @@ OpenClaw 的现代化 Web 管理界面，提供配置管理、文件操作、技
 - ✅ Agent 启停控制
 - ✅ Agent 状态监控
 - ✅ SSE 流式对话（绕过 CLI，直调 LLM API，首字 < 1s）
+- ✅ 群聊多 Agent 并发流式对话（POST /api/chat/group）
 - ✅ 技能安装/卸载（真实 API 对接）
 - ✅ 异步任务机制（创建/编辑/删除不阻塞）
 
@@ -127,42 +132,107 @@ npm start
 ```
 web-console/
 ├── client/                    # 前端代码（Vue 3 + Naive UI）
-│   ├── src/
-│   │   ├── views/            # 页面组件（Agent/Config/Files/Login/Skills...）
-│   │   ├── components/       # 通用组件（MonacoEditor, ConfigSectionCollection）
-│   │   ├── stores/           # Pinia 状态管理（theme, user）
-│   │   ├── router/           # 路由配置
-│   │   ├── api/              # API 接口封装
-│   │   ├── composables/      # 组合式函数（useWebSocket）
-│   │   ├── types/            # 类型声明
-│   │   ├── utils/            # 工具函数（errorHandler）
-│   │   └── assets/           # 静态资源（logo.svg）
+│   ├── index.html
+│   ├── main.ts               # 入口文件
 │   ├── App.vue               # 根组件
-│   └── main.ts               # 入口文件
+│   ├── vite.config.ts
+│   ├── vitest.config.ts
+│   ├── tsconfig.json
+│   ├── tsconfig.node.json
+│   ├── package.json
+│   ├── src/
+│   │   ├── api/              # API 接口封装
+│   │   │   └── index.ts
+│   │   ├── assets/           # 静态资源
+│   │   │   └── logo.svg
+│   │   ├── components/       # 通用组件
+│   │   │   ├── AgentSelector.vue       # 选择 Agent 弹窗
+│   │   │   ├── ChatFloat.vue           # 最小化浮动窗
+│   │   │   ├── ChatHeader.vue          # 对话页头部
+│   │   │   ├── ChatPanel.vue           # 对话面板（消息 + 输入）
+│   │   │   ├── ChatTabBar.vue          # 多 Tab 切换栏
+│   │   │   ├── ConfigSectionCollection.vue
+│   │   │   ├── GroupChatSelector.vue   # 群聊选择弹窗
+│   │   │   └── MonacoEditor.vue        # 代码编辑器
+│   │   ├── composables/
+│   │   │   └── useWebSocket.ts         # WebSocket 组合式函数
+│   │   ├── router/           # 路由配置
+│   │   │   └── index.ts
+│   │   ├── stores/           # Pinia 状态管理
+│   │   │   ├── chat.ts       # 对话状态（tabs/messages/SSE）
+│   │   │   ├── theme.ts      # 主题状态
+│   │   │   └── user.ts       # 用户状态
+│   │   ├── types/            # 类型声明
+│   │   │   ├── ionicons.d.ts
+│   │   │   └── vicons.d.ts
+│   │   ├── utils/            # 工具函数
+│   │   │   └── errorHandler.ts
+│   │   └── views/            # 页面组件
+│   │       ├── Agents.vue    # Agent 管理
+│   │       ├── Chat.vue      # 独立对话页面
+│   │       ├── Config.vue    # 配置管理
+│   │       ├── Dashboard.vue # 仪表盘
+│   │       ├── Devices.vue   # 设备管理
+│   │       ├── Files.vue     # 文件管理
+│   │       ├── Layout.vue    # 布局框架
+│   │       ├── Login.vue     # 登录页
+│   │       ├── Logs.vue      # 日志
+│   │       ├── Monitor.vue   # 系统监控
+│   │       ├── Providers.vue # 供应商管理
+│   │       ├── Skills.vue    # 技能中心
+│   │       └── Users.vue     # 用户管理
+│   └── tests/                # 前端测试
+│       ├── api/index.test.ts
+│       ├── router/index.test.ts
+│       └── stores/theme.test.ts
 ├── server/                    # 后端代码（Express + SQLite + Socket.IO）
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── vitest.config.ts
 │   ├── src/
 │   │   ├── index.ts          # 服务入口 + WebSocket 初始化
-│   │   ├── routes/           # API 路由（auth/users/config/files/skills/agents/tasks/monitor/devices）
+│   │   ├── middleware/       # 中间件
+│   │   │   ├── auth.ts       # JWT 认证中间件
+│   │   │   └── ws-auth.ts    # WebSocket 认证
+│   │   ├── routes/           # API 路由
+│   │   │   ├── agents.ts     # Agent 管理 + SSE 流式对话
+│   │   │   ├── alerts.ts     # 告警规则/事件
+│   │   │   ├── auth.ts       # 登录/登出
+│   │   │   ├── chat.ts       # 群聊多 Agent 协作
+│   │   │   ├── config.ts     # 配置管理
+│   │   │   ├── devices.ts    # 设备管理
+│   │   │   ├── files.ts      # 文件管理
+│   │   │   ├── monitor.ts    # 系统监控
+│   │   │   ├── skills.ts     # 技能中心
+│   │   │   ├── tasks.ts      # 任务管理
+│   │   │   └── users.ts      # 用户管理
 │   │   ├── services/         # 核心服务
-│   │   │   ├── database.ts      # SQLite 数据库（users/settings/sessions/messages）
-│   │   │   ├── deepseek-service.ts  # **流式对话引擎（SSE，直调 LLM API）**
-│   │   │   ├── openclaw-service.ts  # OpenClaw CLI 封装 + Agent CRUD
-│   │   │   ├── skill-service.ts     # 技能安装/卸载/搜索
-│   │   │   ├── task-service.ts      # 异步任务管理 + 轮询
-│   │   │   ├── alert-service.ts     # 告警规则引擎
-│   │   │   ├── device-service.ts    # 设备管理
-│   │   │   ├── encryption-service.ts# AES-256-GCM 加密
-│   │   │   └── user-service.ts      # 用户管理
-│   │   ├── middleware/       # 中间件（auth, ws-auth）
-│   │   └── utils/            # 工具函数（jwt-secret, logger）
+│   │   │   ├── alert-service.ts      # 告警规则引擎
+│   │   │   ├── database.ts           # SQLite 数据库
+│   │   │   ├── deepseek-service.ts   # **流式对话引擎（SSE，直调 LLM API）**
+│   │   │   ├── device-service.ts     # 设备管理
+│   │   │   ├── encryption-service.ts # AES-256-GCM 加密
+│   │   │   ├── openclaw-service.ts   # OpenClaw CLI 封装 + Agent CRUD
+│   │   │   ├── skill-service.ts      # 技能安装/卸载/搜索
+│   │   │   ├── task-service.ts       # 异步任务管理 + 轮询
+│   │   │   └── user-service.ts       # 用户管理
+│   │   └── utils/            # 工具函数
+│   │       ├── jwt-secret.ts # JWT 密钥工具
+│   │       └── logger.ts    # 日志工具
 │   └── tests/                # 后端测试
+│       └── routes/           # 路由测试
+│           ├── auth.test.ts
+│           ├── config.test.ts
+│           └── files.test.ts
 ├── docs/                     # 文档
 │   ├── requirements.md       # 需求文档
 │   ├── api.md                # API 文档（详细）
 │   └── deployment.md         # 部署文档
 ├── .env.example              # 环境变量示例（含 DEEPSEEK_API_KEY）
-├── package.json              # 项目配置
-└── README.md                 # 本文件
+├── .gitignore
+├── LICENSE
+├── package-lock.json
+└── package.json              # 项目配置
 ```
 
 ## 🧪 测试
@@ -261,6 +331,7 @@ pm2 startup
 | POST | `/api/agents/:id/restart` | 重启 Agent |
 | POST | `/api/agents/:id/chat` | 与 Agent 对话（旧接口，CLI 模式）|
 | **GET** | `/api/agents/:id/chat/stream` | **流式对话（新）— SSE 打字机效果，首字 < 1s** |
+| **POST** | `/api/chat/group` | **群聊多 Agent 协作 — SSE 并发流式返回，每 token 携带 agentId** |
 | GET | `/api/agents/:id/logs` | 获取 Agent 日志 |
 | GET | `/api/agents/:id/stats` | 获取 Agent 统计信息（含 sessionCount/totalMessages/totalTokens）|
 | GET | `/api/agents/:id/sessions` | 获取 Agent 的会话列表 |

@@ -8,6 +8,7 @@
 - [文件 API](#文件-api)
 - [技能 API](#技能-api)
 - [Agent API](#agent-api)
+- [群聊 API](#群聊-api)
 - [告警 API](#告警-api)
 - [监控 API](#监控-api)
 - [WebSocket 事件](#websocket-事件)
@@ -887,6 +888,75 @@ data: [DONE]
 **成功响应 (200)：** `{"message": "Agent 已删除"}`
 
 **权限：** admin
+
+---
+
+## 群聊 API
+
+群聊 API 支持同时与多个 Agent 对话，所有 Agent 并发回复。
+
+### POST /api/chat/group
+
+多 Agent 群聊 — SSE (text/event-stream) 流式返回，每个 token 携带 `agentId` 和 `agentName` 标识来源。
+
+**请求体：**
+```json
+{
+  "agentIds": ["agent-main", "my-agent"],
+  "message": "帮我写一个登录页面",
+  "sessionId": "uuid-xxx"
+}
+```
+
+**请求体字段：**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| agentIds | string[] | ✅ | 参与群聊的 Agent ID 列表（至少 2 个） |
+| message | string | ✅ | 用户消息内容 |
+| sessionId | string | ❌ | 会话 ID（留空自动创建新会话） |
+
+> ⚠️ **鉴权说明：** 需要 `Authorization: Bearer <token>` 请求头。
+
+**响应格式：** text/event-stream
+
+```text
+data: {"type":"session","sessionId":"uuid-xxx"}
+
+data: {"agentId":"agent-main","agentName":"Main Agent","token":"我"}
+
+data: {"agentId":"my-agent","agentName":"My Agent","token":"我"}
+
+data: {"agentId":"agent-main","agentName":"Main Agent","token":"来"}
+
+data: {"agentId":"my-agent","agentName":"My Agent","token":"来"}
+
+data: {"agentId":"agent-main","agentName":"Main Agent","token":"写"}
+
+data: {"agentId":"my-agent","agentName":"My Agent","token":"写"}
+
+data: {"agentId":"agent-main","agentName":"Main Agent","token":"","done":true}
+
+data: {"agentId":"my-agent","agentName":"My Agent","token":"","done":true}
+
+data: [DONE]
+```
+
+**事件类型：**
+- `type: session` — 返回当前会话 ID
+- `token` — 单个 token，同时携带 `agentId` / `agentName`
+- `done: true` — 单个 Agent 完成回复
+- `[DONE]` — 所有 Agent 流结束
+
+**说明：**
+- 所有 Agent 被**并发**调用（`Promise.allSettled`）
+- 每个 Agent 使用其独立配置（provider/temperature/maxTokens）
+- 群聊消息自动持久化到 SQLite
+- 前端按 `agentId` 分组展示各 Agent 的回复
+
+**错误响应：**
+- `400` - 请至少选择一个 Agent / 消息不能为空
+- `401` - 未授权
 
 ---
 
