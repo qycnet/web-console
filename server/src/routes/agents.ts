@@ -47,6 +47,30 @@ router.get('/:agentId/chat/stream', async (req: Request, res: Response) => {
     return
   }
 
+  // 先获取 Agent 配置并检查 disabled（在设置 SSE headers 之前）
+  const agentId = req.params.agentId
+  const message = req.query.message as string
+  let sessionId = req.query.sessionId as string
+
+  if (!message) {
+    res.status(400).json({ error: '消息不能为空' })
+    return
+  }
+
+  // 检查 Agent 是否被禁用（外部声明，跨作用域共享）
+  let agentInfo: any
+
+  try {
+    agentInfo = await openclawService.getAgent(agentId)
+    if (agentInfo && agentInfo.disabled) {
+      res.status(403).json({ error: '该 Agent 已被禁用，无法发起对话' })
+      return
+    }
+  } catch {
+    res.status(500).json({ error: '获取 Agent 信息失败' })
+    return
+  }
+
   // 设置 SSE headers
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
@@ -54,22 +78,10 @@ router.get('/:agentId/chat/stream', async (req: Request, res: Response) => {
   res.setHeader('X-Accel-Buffering', 'no')   // Nginx 禁用缓冲
   res.flushHeaders()
 
-  const agentId = req.params.agentId
-  const message = req.query.message as string
-  let sessionId = req.query.sessionId as string
-
-  if (!message) {
-    res.write(`data: ${JSON.stringify({ error: '消息不能为空' })}\n\n`)
-    res.end()
-    return
-  }
-
-  // 如果没有 sessionId，新建一个
   if (!sessionId) {
     sessionId = generateSessionId()
     database.createSession(sessionId, agentId, message.substring(0, 50))
   } else {
-    // 检查 session 是否存在
     const existing = database.getSession(sessionId)
     if (!existing) {
       database.createSession(sessionId, agentId)
@@ -80,16 +92,8 @@ router.get('/:agentId/chat/stream', async (req: Request, res: Response) => {
   res.write(`data: ${JSON.stringify({ type: 'session', sessionId })}\n\n`)
 
   try {
-    // 获取 Agent 配置
-    const agentInfo = await openclawService.getAgent(agentId)
     let agentConfig: AgentChatConfig
-
     if (agentInfo) {
-      // 检查是否被禁用
-      if ((agentInfo as any).disabled) {
-        res.status(403).json({ error: '该 Agent 已被禁用，无法发起对话' })
-        return
-      }
       agentConfig = {
         id: agentInfo.id,
         name: agentInfo.name,
