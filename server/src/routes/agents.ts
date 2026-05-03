@@ -47,7 +47,8 @@ router.get('/:agentId/chat/stream', async (req: Request, res: Response) => {
     return
   }
 
-  // 先获取 Agent 配置并检查 disabled（在设置 SSE headers 之前）
+  // 先获取 Agent 配置并检查 disabled（输出 SSE 格式错误而非 HTTP JSON，
+  // 因为浏览器 EventSource 无法读取非 200 状态码的响应体）
   const agentId = req.params.agentId
   const message = req.query.message as string
   let sessionId = req.query.sessionId as string
@@ -57,26 +58,30 @@ router.get('/:agentId/chat/stream', async (req: Request, res: Response) => {
     return
   }
 
-  // 检查 Agent 是否被禁用（外部声明，跨作用域共享）
-  let agentInfo: any
-
-  try {
-    agentInfo = await openclawService.getAgent(agentId)
-    if (agentInfo && agentInfo.disabled) {
-      res.status(403).json({ error: '该 Agent 已被禁用，无法发起对话' })
-      return
-    }
-  } catch {
-    res.status(500).json({ error: '获取 Agent 信息失败' })
-    return
-  }
-
   // 设置 SSE headers
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection', 'keep-alive')
   res.setHeader('X-Accel-Buffering', 'no')   // Nginx 禁用缓冲
   res.flushHeaders()
+
+  // 检查 Agent 是否被禁用（在 SSE 流中返回错误事件，而不是 HTTP 403）
+  let agentInfo: any
+
+  try {
+    agentInfo = await openclawService.getAgent(agentId)
+    if (agentInfo && agentInfo.disabled) {
+      res.write(`data: ${JSON.stringify({ error: '该 Agent 已被禁用，无法发起对话' })}\n\n`)
+      res.write('data: [DONE]\n\n')
+      res.end()
+      return
+    }
+  } catch {
+    res.write(`data: ${JSON.stringify({ error: '获取 Agent 信息失败' })}\n\n`)
+    res.write('data: [DONE]\n\n')
+    res.end()
+    return
+  }
 
   if (!sessionId) {
     sessionId = generateSessionId()
