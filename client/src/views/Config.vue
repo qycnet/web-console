@@ -85,6 +85,42 @@
           </n-space>
         </n-tab-pane>
 
+        <n-tab-pane name="protected" tab="受保护文件">
+          <div class="protected-paths">
+            <div style="margin-bottom: 16px; color: #666; font-size: 14px;">
+              配置非 admin 用户不可操作的文件或目录路径（前缀匹配）。受保护路径对 admin 用户不受影响。
+            </div>
+            <n-list bordered>
+              <n-list-item v-for="(p, idx) in protectedPaths" :key="idx">
+                <n-thing>
+                  <template #description>
+                    <code style="font-size: 13px;">{{ p }}</code>
+                  </template>
+                  <template #action>
+                    <n-button size="tiny" quaternary type="error" @click="removeProtectedPath(idx)">
+                      <template #icon><n-icon :component="TrashOutline" /></template>
+                    </n-button>
+                  </template>
+                </n-thing>
+              </n-list-item>
+            </n-list>
+            <n-empty v-if="protectedPaths.length === 0" description="暂无受保护路径" style="margin: 24px 0;" />
+            <n-space style="margin-top: 12px;">
+              <n-input
+                v-model:value="newProtectedPath"
+                placeholder="例如: .openclaw/config.json 或 .ssh"
+                style="width: 400px;"
+                clearable
+                @keyup.enter="addProtectedPath"
+              />
+              <n-button @click="addProtectedPath" :disabled="!newProtectedPath.trim()">添加</n-button>
+            </n-space>
+            <n-space justify="end" style="margin-top: 24px;">
+              <n-button type="primary" @click="saveProtectedPaths" :loading="savingProtectedPaths">保存配置</n-button>
+            </n-space>
+          </div>
+        </n-tab-pane>
+
         <n-tab-pane name="overview" tab="配置概览">
           <n-grid :cols="2" :x-gap="16" :y-gap="16">
             <n-gi v-for="(module, key) in configModules" :key="key">
@@ -294,6 +330,7 @@ const configModules = computed(() => {
 // ---- 初始化 ----
 onMounted(async () => {
   await fetchConfig()
+  await loadProtectedPaths()
 })
 
 async function fetchConfig() {
@@ -391,6 +428,56 @@ async function saveBrowserConfig() {
   parsedConfig.value.browser = { ...browserForm }
   await saveConfig()
   message.success('浏览器配置已保存')
+}
+
+// ---- 受保护路径 ----
+const protectedPaths = ref<string[]>([])
+const newProtectedPath = ref('')
+const savingProtectedPaths = ref(false)
+
+function addProtectedPath() {
+  const path = newProtectedPath.value.trim()
+  if (!path) return
+  if (protectedPaths.value.includes(path)) {
+    message.warning('该路径已存在')
+    return
+  }
+  protectedPaths.value.push(path)
+  newProtectedPath.value = ''
+}
+
+function removeProtectedPath(idx: number) {
+  protectedPaths.value.splice(idx, 1)
+}
+
+async function loadProtectedPaths() {
+  try {
+    const res = await api.config.get('protected-paths')
+    protectedPaths.value = res.paths || []
+  } catch {
+    // If endpoint doesn't exist, use defaults
+    protectedPaths.value = ['.openclaw/config.json', '.openclaw/openclaw.json']
+  }
+}
+
+async function saveProtectedPaths() {
+  savingProtectedPaths.value = true
+  try {
+    const res = await fetch('/api/config/protected-paths', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({ paths: protectedPaths.value })
+    })
+    if (!res.ok) throw new Error((await res.json()).error || '保存失败')
+    message.success('受保护路径已保存')
+  } catch (err: any) {
+    message.error(`保存失败: ${err.message}`)
+  } finally {
+    savingProtectedPaths.value = false
+  }
 }
 
 async function saveConfig() {

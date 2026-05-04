@@ -6,6 +6,7 @@ import { logger } from '../utils/logger.js'
 import { openclawService } from '../services/openclaw-service.js'
 import { authMiddleware, requireRole } from '../middleware/auth.js'
 import { encryptSensitiveFields, decryptSensitiveFields } from '../services/encryption-service.js'
+import { database } from '../services/database.js'
 
 const router = Router()
 
@@ -554,6 +555,49 @@ router.post('/reload', async (_, res: Response) => {
     logger.error('Failed to reload config:', error)
     // 即使 reload 失败，配置本身可能已更新
     res.json({ message: '配置已保存，热重载可能失败，建议重启服务' })
+  }
+})
+
+/**
+ * GET /protected-paths
+ * 获取受保护文件/目录列表（admin-only，已有 router.use(requireRole('admin')) 兜底）
+ */
+router.get('/protected-paths', async (_, res: Response) => {
+  try {
+    const row = database.getSetting('protected_paths')
+    let paths: string[] = ['.openclaw/config.json', '.openclaw/openclaw.json']
+    if (row) {
+      try { paths = JSON.parse(row) } catch { /* use defaults */ }
+    }
+    res.json({ paths })
+  } catch (error) {
+    logger.error('Failed to get protected paths:', error)
+    res.status(500).json({ error: '读取失败' })
+  }
+})
+
+/**
+ * PUT /protected-paths
+ * 保存受保护文件/目录列表（全量替换）
+ */
+router.put('/protected-paths', async (req, res: Response) => {
+  try {
+    const { paths } = req.body
+    if (!Array.isArray(paths)) {
+      return res.status(400).json({ error: 'paths 必须是数组' })
+    }
+    // 校验每个路径为字符串
+    for (const p of paths) {
+      if (typeof p !== 'string') {
+        return res.status(400).json({ error: '每个路径必须是字符串' })
+      }
+    }
+    database.setSetting('protected_paths', JSON.stringify(paths))
+    logger.info(`Protected paths updated: ${JSON.stringify(paths)}`)
+    res.json({ message: '保存成功', paths })
+  } catch (error) {
+    logger.error('Failed to save protected paths:', error)
+    res.status(500).json({ error: '保存失败' })
   }
 })
 

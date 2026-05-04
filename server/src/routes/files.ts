@@ -1,15 +1,67 @@
-import { Router, Response } from 'express'
+import { Router, Request, Response } from 'express'
 import fs from 'fs-extra'
 import path from 'path'
 import archiver from 'archiver'
 import multer from 'multer'
 import { logger } from '../utils/logger.js'
-import { authMiddleware } from '../middleware/auth.js'
+import { authMiddleware, requireRole } from '../middleware/auth.js'
+import { database } from '../services/database.js'
 
 const router = Router()
 
 // 所有文件路由需要 JWT 认证
 router.use(authMiddleware)
+
+// ===== 受保护路径配置 =====
+const DEFAULT_PROTECTED_PATHS = [
+  '.openclaw/config.json',
+  '.openclaw/openclaw.json',
+]
+
+/** 从 settings 表读取受保护路径列表 */
+async function getProtectedPaths(): Promise<string[]> {
+  const row = database.getSetting('protected_paths')
+  if (!row) return DEFAULT_PROTECTED_PATHS
+  try {
+    return JSON.parse(row)
+  } catch {
+    return DEFAULT_PROTECTED_PATHS
+  }
+}
+
+/** 从各种请求中提取目标路径 */
+function extractTargetPath(req: Request): string | null {
+  // GET /?path=xxx
+  if (req.query.path) return req.query.path as string
+  // PUT /write body.path, POST /upload body.path
+  if (req.body?.path) return req.body.path as string
+  // PUT /move body.from / body.to
+  if (req.body?.from) return req.body.from as string
+  if (req.body?.to) return req.body.to as string
+  return null
+}
+
+/** 受保护路径检查：非 admin 不能操作指定文件/目录 */
+router.use(async (req, res, next) => {
+  try {
+    const protectedPaths = await getProtectedPaths()
+    if (protectedPaths.length === 0) return next()
+
+    const targetPath = extractTargetPath(req)
+    if (!targetPath) return next()
+
+    const isProtected = protectedPaths.some(p =>
+      targetPath.startsWith(p) || targetPath === p
+    )
+
+    if (isProtected) {
+      return requireRole('admin')(req, res, next)
+    }
+    next()
+  } catch {
+    next()
+  }
+})
 
 const ALLOWED_EXTENSIONS = ['.txt', '.md', '.json', '.yaml', '.yml', '.log', '.env', '.toml', '.ini', '.cfg']
 
