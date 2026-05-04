@@ -65,7 +65,7 @@
 </template>
 
 <script setup lang="ts">
-import { h, ref, computed } from 'vue'
+import { h, ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   NLayout,
@@ -106,6 +106,13 @@ const userStore = useUserStore()
 
 const collapsed = ref(false)
 const currentRoute = computed(() => route)
+
+// 页面刷新后从 token 恢复用户信息（否则侧边栏 admin 权限菜单不显示）
+onMounted(() => {
+  if (userStore.isLoggedIn && !userStore.user) {
+    userStore.fetchUser()
+  }
+})
 
 const baseMenuOptions: any[] = [
   {
