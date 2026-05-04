@@ -669,9 +669,11 @@ function handleRemoveSkill(skill: string) {
   // 通过 Agent 专属 API 卸载技能
   api.agents.skills.uninstall(selectedAgent.value.id, skill)
     .then(() => {
+      message.success(`技能「${skill}」已卸载`)
+      loadAgents()
+      // 刷新选中 Agent 的技能标签
       const idx = selectedAgent.value!.skills.indexOf(skill)
       if (idx !== -1) selectedAgent.value!.skills.splice(idx, 1)
-      message.success(`技能「${skill}」已卸载`)
     })
     .catch((err: any) => {
       message.error(err?.error || '卸载失败')
@@ -685,6 +687,7 @@ async function handleAddSkill() {
     await api.agents.skills.install(selectedAgent.value.id, newSkill.value)
     selectedAgent.value.skills.push(newSkill.value)
     message.success(`技能「${newSkill.value}」已安装`)
+    loadAgents()
   } catch (err: any) {
     const msg = err?.error || err?.message || '安装失败'
     message.error(msg)
