@@ -13,9 +13,10 @@ OpenClaw 的现代化 Web 管理界面，提供配置管理、文件操作、技
 | 模块 | 功能描述 |
 |------|----------|
 | 🔐 **认证与权限** | JWT Token 认证、三级角色权限（admin/user/viewer）、WebSocket 认证 |
-| 👥 **用户管理** | 用户 CRUD、角色分配、状态管理、审计日志 |
+| 👥 **用户管理** | 用户 CRUD、角色分配、状态管理、审计日志、修改密码 |
 | ⚙️ **配置管理** | 可视化编辑、JSON 模式、热重载、备份恢复、字段加密 |
-| 📁 **文件管理** | 在线浏览、Monaco 编辑器、上传下载、安全路径检查 |
+| 📁 **文件管理** | 在线浏览、Monaco 编辑器、上传下载、安全路径检查、大文件断点续传 |
+| 🔒 **受保护文件** | 可配置敏感路径保护，非 admin 用户不可操作 |
 | 🎯 **技能中心** | 技能市场、一键安装/卸载、中文支持、分类搜索、真实安装/卸载 API |
 | 🤖 **Agent 管理** | 列表查看、启停控制、管理面板、SSE 流式对话（打字机效果，首字 < 1s） |
 | 🧵 **会话管理** | 历史会话 SQLite 持久化、会话切换、新会话/删除会话 |
@@ -29,19 +30,23 @@ OpenClaw 的现代化 Web 管理界面，提供配置管理、文件操作、技
 | 📊 **系统监控** | CPU/内存/磁盘、进程管理、实时日志推送 |
 | 📝 **代码编辑** | Monaco Editor、语法高亮、多语言支持 |
 | 🚨 **告警管理** | 告警规则、条件引擎、等级设置、事件追溯 |
+| 🖥️ **设备管理** | 设备列表、会话管理、权限吊销 |
+| 📋 **任务管理** | 异步任务列表、状态查询 |
 
 ### 安全特性
 
 - ✅ JWT 认证（无硬编码后备密钥）
 - ✅ WebSocket JWT 认证
 - ✅ 请求速率限制（防暴力攻击）
+- ✅ 受保护文件路径配置（可配置敏感路径，非 admin 不可操作）
 - ✅ 首次登录强制修改默认密码
-- ✅ 默认管理员密码随机生成
+- ✅ 默认管理员密码随机生成（32位 hex，128bits 熵）
 - ✅ 完整操作审计日志
 - ✅ 前端错误上报
 - ✅ 文件路径安全检查 + 上传文件类型白名单
 - ✅ 危险操作二次确认
 - ✅ 敏感字段 AES-256-GCM 加密
+- ✅ SQLite 数据库文件权限 0600
 
 ### OpenClaw 集成
 
@@ -131,108 +136,108 @@ npm start
 
 ```
 web-console/
-├── client/                    # 前端代码（Vue 3 + Naive UI）
+├── client/                      # 前端代码（Vue 3 + Naive UI）
 │   ├── index.html
-│   ├── main.ts               # 入口文件
-│   ├── App.vue               # 根组件
-│   ├── vite.config.ts
-│   ├── vitest.config.ts
+│   ├── package.json
 │   ├── tsconfig.json
 │   ├── tsconfig.node.json
-│   ├── package.json
+│   ├── vite.config.ts
+│   ├── vitest.config.ts
 │   ├── src/
-│   │   ├── api/              # API 接口封装
+│   │   ├── main.ts              # 入口文件
+│   │   ├── App.vue              # 根组件
+│   │   ├── api/                 # API 接口封装
 │   │   │   └── index.ts
-│   │   ├── assets/           # 静态资源
+│   │   ├── assets/              # 静态资源
 │   │   │   └── logo.svg
-│   │   ├── components/       # 通用组件
-│   │   │   ├── AgentSelector.vue       # 选择 Agent 弹窗
-│   │   │   ├── ChatFloat.vue           # 最小化浮动窗
-│   │   │   ├── ChatHeader.vue          # 对话页头部
-│   │   │   ├── ChatPanel.vue           # 对话面板（消息 + 输入）
-│   │   │   ├── ChatTabBar.vue          # 多 Tab 切换栏
-│   │   │   ├── ConfigSectionCollection.vue
-│   │   │   ├── GroupChatSelector.vue   # 群聊选择弹窗
-│   │   │   └── MonacoEditor.vue        # 代码编辑器
+│   │   ├── components/          # 通用组件
+│   │   │   ├── AgentSelector.vue           # 选择 Agent 弹窗
+│   │   │   ├── ChatFloat.vue               # 最小化浮动窗
+│   │   │   ├── ChatHeader.vue              # 对话页头部
+│   │   │   ├── ChatPanel.vue               # 对话面板（消息 + 输入）
+│   │   │   ├── ChatTabBar.vue              # 多 Tab 切换栏
+│   │   │   ├── ConfigSectionCollection.vue # 配置分段集合组件
+│   │   │   ├── GroupChatSelector.vue       # 群聊选择弹窗
+│   │   │   └── MonacoEditor.vue            # 代码编辑器
 │   │   ├── composables/
-│   │   │   └── useWebSocket.ts         # WebSocket 组合式函数
-│   │   ├── router/           # 路由配置
+│   │   │   └── useWebSocket.ts             # WebSocket 组合式函数
+│   │   ├── router/             # 路由配置
 │   │   │   └── index.ts
-│   │   ├── stores/           # Pinia 状态管理
-│   │   │   ├── chat.ts       # 对话状态（tabs/messages/SSE）
-│   │   │   ├── theme.ts      # 主题状态
-│   │   │   └── user.ts       # 用户状态
-│   │   ├── types/            # 类型声明
+│   │   ├── stores/             # Pinia 状态管理
+│   │   │   ├── chat.ts         # 对话状态（tabs/messages/SSE）
+│   │   │   ├── theme.ts        # 主题状态
+│   │   │   └── user.ts         # 用户状态
+│   │   ├── types/              # 类型声明
 │   │   │   ├── ionicons.d.ts
 │   │   │   └── vicons.d.ts
-│   │   ├── utils/            # 工具函数
+│   │   ├── utils/              # 工具函数
 │   │   │   └── errorHandler.ts
-│   │   └── views/            # 页面组件
-│   │       ├── Agents.vue    # Agent 管理
-│   │       ├── Chat.vue      # 独立对话页面
-│   │       ├── Config.vue    # 配置管理
-│   │       ├── Dashboard.vue # 仪表盘
-│   │       ├── Devices.vue   # 设备管理
-│   │       ├── Files.vue     # 文件管理
-│   │       ├── Layout.vue    # 布局框架
-│   │       ├── Login.vue     # 登录页
-│   │       ├── Logs.vue      # 日志
-│   │       ├── Monitor.vue   # 系统监控
-│   │       ├── Providers.vue # 供应商管理
-│   │       ├── Skills.vue    # 技能中心
-│   │       └── Users.vue     # 用户管理
-│   └── tests/                # 前端测试
+│   │   └── views/              # 页面组件
+│   │       ├── Agents.vue      # Agent 管理
+│   │       ├── Chat.vue        # 独立对话页面
+│   │       ├── Config.vue      # 配置管理
+│   │       ├── Dashboard.vue   # 仪表盘
+│   │       ├── Devices.vue     # 设备管理
+│   │       ├── Files.vue       # 文件管理
+│   │       ├── Layout.vue      # 布局框架（侧边栏 + 顶栏）
+│   │       ├── Login.vue       # 登录页
+│   │       ├── Logs.vue        # 日志查看
+│   │       ├── Monitor.vue     # 系统监控
+│   │       ├── Providers.vue   # 供应商管理
+│   │       ├── Skills.vue      # 技能中心
+│   │       └── Users.vue       # 用户管理
+│   └── tests/                  # 前端测试
 │       ├── api/index.test.ts
 │       ├── router/index.test.ts
 │       └── stores/theme.test.ts
-├── server/                    # 后端代码（Express + SQLite + Socket.IO）
+├── server/                      # 后端代码（Express + SQLite + Socket.IO）
 │   ├── package.json
 │   ├── tsconfig.json
 │   ├── vitest.config.ts
 │   ├── src/
-│   │   ├── index.ts          # 服务入口 + WebSocket 初始化
-│   │   ├── middleware/       # 中间件
-│   │   │   ├── auth.ts       # JWT 认证中间件
-│   │   │   └── ws-auth.ts    # WebSocket 认证
-│   │   ├── routes/           # API 路由
-│   │   │   ├── agents.ts     # Agent 管理 + SSE 流式对话
-│   │   │   ├── alerts.ts     # 告警规则/事件
-│   │   │   ├── auth.ts       # 登录/登出
-│   │   │   ├── chat.ts       # 群聊多 Agent 协作
-│   │   │   ├── config.ts     # 配置管理
-│   │   │   ├── devices.ts    # 设备管理
-│   │   │   ├── files.ts      # 文件管理
-│   │   │   ├── monitor.ts    # 系统监控
-│   │   │   ├── skills.ts     # 技能中心
-│   │   │   ├── tasks.ts      # 任务管理
-│   │   │   └── users.ts      # 用户管理
-│   │   ├── services/         # 核心服务
+│   │   ├── index.ts            # 服务入口 + WebSocket 初始化
+│   │   ├── middleware/         # 中间件
+│   │   │   ├── auth.ts         # JWT 认证中间件（含受保护路径检查）
+│   │   │   └── ws-auth.ts      # WebSocket 认证
+│   │   ├── routes/             # API 路由
+│   │   │   ├── agents.ts       # Agent 管理 + SSE 流式对话
+│   │   │   ├── alerts.ts       # 告警规则/事件
+│   │   │   ├── auth.ts         # 登录/登出/刷新 Token
+│   │   │   ├── chat.ts         # 群聊多 Agent 协作
+│   │   │   ├── config.ts       # 配置管理 + 受保护路径配置
+│   │   │   ├── devices.ts      # 设备管理
+│   │   │   ├── files.ts        # 文件管理 + 受保护路径拦截
+│   │   │   ├── monitor.ts      # 系统监控
+│   │   │   ├── skills.ts       # 技能中心
+│   │   │   ├── tasks.ts        # 异步任务管理
+│   │   │   └── users.ts        # 用户管理 + 修改密码
+│   │   ├── services/           # 核心服务
 │   │   │   ├── alert-service.ts      # 告警规则引擎
 │   │   │   ├── database.ts           # SQLite 数据库
-│   │   │   ├── deepseek-service.ts   # **流式对话引擎（SSE，直调 LLM API）**
+│   │   │   ├── deepseek-service.ts   # 流式对话引擎（SSE，直调 LLM API）
 │   │   │   ├── device-service.ts     # 设备管理
 │   │   │   ├── encryption-service.ts # AES-256-GCM 加密
 │   │   │   ├── openclaw-service.ts   # OpenClaw CLI 封装 + Agent CRUD
 │   │   │   ├── skill-service.ts      # 技能安装/卸载/搜索
 │   │   │   ├── task-service.ts       # 异步任务管理 + 轮询
 │   │   │   └── user-service.ts       # 用户管理
-│   │   └── utils/            # 工具函数
-│   │       ├── jwt-secret.ts # JWT 密钥工具
-│   │       └── logger.ts    # 日志工具
-│   └── tests/                # 后端测试
-│       └── routes/           # 路由测试
+│   │   └── utils/              # 工具函数
+│   │       ├── jwt-secret.ts   # JWT 密钥工具
+│   │       └── logger.ts       # 日志工具
+│   └── tests/                  # 后端测试
+│       └── routes/
 │           ├── auth.test.ts
 │           ├── config.test.ts
 │           └── files.test.ts
-├── docs/                     # 文档
-│   ├── requirements.md       # 需求文档
-│   ├── api.md                # API 文档（详细）
-│   └── deployment.md         # 部署文档
-├── .env.example              # 环境变量示例（含 DEEPSEEK_API_KEY）
+├── docs/                       # 文档
+│   ├── requirements.md         # 需求文档
+│   ├── api.md                  # API 文档（详细）
+│   └── deployment.md           # 部署文档
+├── .env.example                # 环境变量示例
 ├── .gitignore
 ├── LICENSE
 ├── package-lock.json
-└── package.json              # 项目配置
+└── package.json                # 项目配置（根 monorepo）
 ```
 
 ## 🧪 测试
@@ -269,7 +274,7 @@ cp .env.example .env
 | `PORT` | 服务端口 | `3001` | ❌ |
 | `CLIENT_URL` | 客户端地址 | `http://localhost:3000` | ❌ |
 | `JWT_SECRET` | JWT 密钥 | — | ✅ **必填，无默认值** |
-| `ADMIN_PASSWORD` | 初始管理员密码 | 随机生成（8位hex） | ❌ |
+| `ADMIN_PASSWORD` | 初始管理员密码 | 随机生成（32位hex） | ❌ |
 | `OPENCLAW_DIR` | OpenClaw 目录 | `~/.openclaw` | ❌ |
 | `LOG_LEVEL` | 日志级别 | `info` | ❌ |
 | `DEEPSEEK_API_KEY` | DeepSeek API Key（流式对话用） | — | ❌ |
@@ -312,8 +317,9 @@ pm2 startup
 |------|------|------|
 | GET | `/api/users` | 用户列表 |
 | POST | `/api/users` | 创建用户 |
-| PUT | `/api/users/:id` | 更新用户 |
-| DELETE | `/api/users/:id` | 删除用户 |
+| PUT | `/api/users/:id` | 编辑用户（含密码修改、角色/状态管理） |
+| DELETE | `/api/users/:id` | 删除用户（需二次确认） |
+| POST | `/api/users/change-password` | 修改密码（需原密码验证） |
 | GET | `/api/users/audit-logs` | 审计日志 |
 
 ### Agent API
