@@ -52,14 +52,33 @@
         <n-form-item label="用户名">
           <n-input :value="editForm.username" disabled />
         </n-form-item>
+        <n-form-item label="新密码（可选）" :path="isEditingSelf ? undefined : 'password'">
+          <n-input
+            v-model:value="editForm.password"
+            type="password"
+            :placeholder="isEditingSelf ? '如需修改密码，请在个人中心操作' : '输入新密码'"
+            show-password-on="click"
+            :disabled="isEditingSelf"
+            :clearable="!isEditingSelf"
+          />
+          <template #tip v-if="isEditingSelf">
+            <span style="color: #999; font-size: 12px;">管理员不能在此处修改自己的密码，请在个人中心修改</span>
+          </template>
+        </n-form-item>
         <n-form-item label="邮箱">
           <n-input v-model:value="editForm.email" placeholder="请输入邮箱" />
         </n-form-item>
         <n-form-item label="角色">
-          <n-select v-model:value="editForm.role" :options="roleOptions" />
+          <n-select v-model:value="editForm.role" :options="roleOptions" :disabled="isEditingSelf" />
+          <template #tip v-if="isEditingSelf">
+            <span style="color: #999; font-size: 12px;">不能修改自己的角色</span>
+          </template>
         </n-form-item>
         <n-form-item label="状态">
-          <n-select v-model:value="editForm.status" :options="statusOptions" />
+          <n-select v-model:value="editForm.status" :options="statusOptions" :disabled="isEditingSelf" />
+          <template #tip v-if="isEditingSelf">
+            <span style="color: #999; font-size: 12px;">不能修改自己的状态</span>
+          </template>
         </n-form-item>
       </n-form>
       <template #footer>
@@ -83,7 +102,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, h, onMounted } from 'vue'
+import { ref, h, computed, onMounted } from 'vue'
 import {
   NCard,
   NDataTable,
@@ -107,6 +126,7 @@ import {
   DocumentTextOutline
 } from '@vicons/ionicons5'
 import { http } from '@/api'
+import { useUserStore } from '@/stores/user'
 
 interface User {
   id: string
@@ -131,6 +151,7 @@ interface AuditLog {
 
 const message = useMessage()
 const dialog = useDialog()
+const userStore = useUserStore()
 
 const users = ref<User[]>([])
 const loading = ref(false)
@@ -155,7 +176,13 @@ const editForm = ref({
   username: '',
   email: '',
   role: 'user' as 'admin' | 'user' | 'viewer',
-  status: 'active' as 'active' | 'inactive' | 'locked'
+  status: 'active' as 'active' | 'inactive' | 'locked',
+  password: ''
+})
+
+// admin 编辑自己时限制修改（不能改密码、角色、状态）
+const isEditingSelf = computed(() => {
+  return editForm.value.id === userStore.user?.id
 })
 
 const createRules = {
@@ -275,14 +302,27 @@ function openEditModal(user: User) {
     username: user.username,
     email: user.email || '',
     role: user.role,
-    status: user.status
+    status: user.status,
+    password: ''
   }
   showEditModal.value = true
 }
 
 async function handleEdit() {
   try {
-    await http.put(`/users/${editForm.value.id}`, editForm.value)
+    const isSelf = editForm.value.id === userStore.user?.id
+    const payload: any = {
+      email: editForm.value.email
+    }
+    if (!isSelf) {
+      payload.role = editForm.value.role
+      payload.status = editForm.value.status
+      // 只有输入了新密码才发送
+      if (editForm.value.password) {
+        payload.password = editForm.value.password
+      }
+    }
+    await http.put(`/users/${editForm.value.id}`, payload)
     message.success('用户信息已更新')
     showEditModal.value = false
     loadUsers()

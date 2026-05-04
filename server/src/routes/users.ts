@@ -103,6 +103,16 @@ router.put('/:userId',
 
       const { email, role, status, password } = req.body
 
+      // admin 不能修改自己的角色和状态
+      if (req.user?.userId === userId) {
+        if (role || status) {
+          return res.status(403).json({ error: '不能修改自己的角色或状态' })
+        }
+        if (password) {
+          return res.status(400).json({ error: '不能在此修改自己的密码，请使用修改密码功能' })
+        }
+      }
+
       // 只有管理员可以修改角色和状态
       const updateData: any = { email }
       if (req.user?.role === 'admin') {
