@@ -146,6 +146,11 @@ export const api = {
       instance.post('/chat/group', data),
   },
 
+  users: {
+    changePassword: (oldPassword: string, newPassword: string) =>
+      instance.post('/users/change-password', { oldPassword, newPassword }),
+  },
+
   agents: {
     list: () => instance.get('/agents'),
     get: (agentId: string) => instance.get(`/agents/${agentId}`),

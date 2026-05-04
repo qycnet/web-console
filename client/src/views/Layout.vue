@@ -51,6 +51,42 @@
         </div>
       </n-layout-header>
 
+      <!-- 修改密码弹窗 -->
+      <n-modal v-model:show="showChangePasswordModal" preset="card" title="修改密码" style="width: 420px;">
+        <n-form ref="changePasswordFormRef" :model="changePasswordForm" :rules="changePasswordRules">
+          <n-form-item path="oldPassword" label="原密码">
+            <n-input
+              v-model:value="changePasswordForm.oldPassword"
+              type="password"
+              placeholder="请输入原密码"
+              show-password-on="click"
+            />
+          </n-form-item>
+          <n-form-item path="newPassword" label="新密码">
+            <n-input
+              v-model:value="changePasswordForm.newPassword"
+              type="password"
+              placeholder="请输入新密码（至少6位）"
+              show-password-on="click"
+            />
+          </n-form-item>
+          <n-form-item path="confirmPassword" label="确认新密码">
+            <n-input
+              v-model:value="changePasswordForm.confirmPassword"
+              type="password"
+              placeholder="请再次输入新密码"
+              show-password-on="click"
+            />
+          </n-form-item>
+        </n-form>
+        <template #footer>
+          <n-space justify="end">
+            <n-button @click="showChangePasswordModal = false">取消</n-button>
+            <n-button type="primary" @click="handleChangePassword" :loading="changingPassword">确认修改</n-button>
+          </n-space>
+        </template>
+      </n-modal>
+
       <!-- 主内容区 -->
       <n-layout-content class="content">
         <router-view v-slot="{ Component }">
@@ -77,7 +113,13 @@ import {
   NBreadcrumbItem,
   NButton,
   NIcon,
-  NDropdown
+  NDropdown,
+  NModal,
+  NForm,
+  NFormItem,
+  NInput,
+  NSpace,
+  useMessage
 } from 'naive-ui'
 import {
   SpeedometerOutline,
@@ -97,15 +139,57 @@ import {
 } from '@vicons/ionicons5'
 import { useThemeStore } from '@/stores/theme'
 import { useUserStore } from '@/stores/user'
+import { api } from '@/api'
 import ChatFloat from '@/components/ChatFloat.vue'
 
 const router = useRouter()
 const route = useRoute()
 const themeStore = useThemeStore()
 const userStore = useUserStore()
+const message = useMessage()
 
 const collapsed = ref(false)
 const currentRoute = computed(() => route)
+
+// 修改密码
+const showChangePasswordModal = ref(false)
+const changingPassword = ref(false)
+const changePasswordFormRef = ref()
+const changePasswordForm = ref({
+  oldPassword: '',
+  newPassword: '',
+  confirmPassword: ''
+})
+const changePasswordRules = {
+  oldPassword: { required: true, message: '请输入原密码', trigger: 'blur' },
+  newPassword: [
+    { required: true, message: '请输入新密码', trigger: 'blur' },
+    { min: 6, message: '新密码至少6位', trigger: 'blur' }
+  ],
+  confirmPassword: [
+    { required: true, message: '请确认新密码', trigger: 'blur' },
+    {
+      validator: (_rule: any, value: string) => value === changePasswordForm.value.newPassword,
+      message: '两次密码不一致',
+      trigger: 'blur'
+    }
+  ]
+}
+
+async function handleChangePassword() {
+  try {
+    await changePasswordFormRef.value?.validate()
+    changingPassword.value = true
+    await api.users.changePassword(changePasswordForm.value.oldPassword, changePasswordForm.value.newPassword)
+    message.success('密码修改成功')
+    showChangePasswordModal.value = false
+    changePasswordForm.value = { oldPassword: '', newPassword: '', confirmPassword: '' }
+  } catch (error: any) {
+    message.error(error.error || error.message || '修改密码失败')
+  } finally {
+    changingPassword.value = false
+  }
+}
 
 // 页面刷新后从 token 恢复用户信息（否则侧边栏 admin 权限菜单不显示）
 onMounted(() => {
@@ -190,6 +274,7 @@ const menuOptions = computed(() => {
 const currentKey = computed(() => route.name as string)
 
 const userOptions = [
+  { label: '修改密码', key: 'changePassword' },
   { label: '退出登录', key: 'logout', icon: () => h(NIcon, null, { default: () => h(LogOutOutline) }) }
 ]
 
@@ -201,6 +286,8 @@ function handleUserSelect(key: string) {
   if (key === 'logout') {
     userStore.logout()
     router.push('/login')
+  } else if (key === 'changePassword') {
+    showChangePasswordModal.value = true
   }
 }
 
