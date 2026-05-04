@@ -10,6 +10,9 @@ fs.ensureDirSync(OPENCLAW_DIR)
 
 const db: DatabaseType = new Database(DB_PATH)
 
+// 限制数据库文件权限为仅 owner 可读写
+try { fs.chmodSync(DB_PATH, 0o600) } catch { /* ignore if no permission */ }
+
 // 初始化数据库表（会话相关表，用户表由 UserService 管理）
 db.exec(`
   CREATE TABLE IF NOT EXISTS settings (

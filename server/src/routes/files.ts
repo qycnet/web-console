@@ -4,8 +4,12 @@ import path from 'path'
 import archiver from 'archiver'
 import multer from 'multer'
 import { logger } from '../utils/logger.js'
+import { authMiddleware } from '../middleware/auth.js'
 
 const router = Router()
+
+// 所有文件路由需要 JWT 认证
+router.use(authMiddleware)
 
 const ALLOWED_EXTENSIONS = ['.txt', '.md', '.json', '.yaml', '.yml', '.log', '.env', '.toml', '.ini', '.cfg']
 

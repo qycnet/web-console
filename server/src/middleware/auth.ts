@@ -55,10 +55,10 @@ export function requireRole(...roles: string[]) {
 }
 
 /**
- * 检查是否为本地请求（仅信任直接连接 IP，不信任 X-Forwarded-For 防止 SSRF）
+ * 检查是否为本地请求（仅信任直接 TCP 连接地址，不信任 X-Forwarded-For 防止 SSRF）
  */
 export function isLocalRequest(req: Request): boolean {
-  const ip = req.ip || req.socket.remoteAddress || ''
+  const ip = req.socket.remoteAddress || ''
   return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1'
 }
 

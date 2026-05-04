@@ -4,8 +4,14 @@ import path from 'path'
 import crypto from 'crypto'
 import { logger } from '../utils/logger.js'
 import { openclawService } from '../services/openclaw-service.js'
+import { authMiddleware, requireRole } from '../middleware/auth.js'
+import { encryptSensitiveFields, decryptSensitiveFields } from '../services/encryption-service.js'
 
 const router = Router()
+
+// 所有配置路由需要 JWT 认证 + admin 角色（配置含敏感 API Key）
+router.use(authMiddleware)
+router.use(requireRole('admin'))
 
 /**
  * 获取 config.json 的路径。
@@ -31,21 +37,22 @@ async function getConfigFilePath(): Promise<string> {
 }
 
 /**
- * 读取完整 config
+ * 读取完整 config（自动解密敏感字段）
  */
 async function readFullConfig(): Promise<any> {
   const configPath = await getConfigFilePath()
   if (!await fs.pathExists(configPath)) return {}
-  return fs.readJson(configPath)
+  const raw = await fs.readJson(configPath)
+  return decryptSensitiveFields(raw)
 }
 
 /**
- * 写入完整 config
+ * 写入完整 config（自动加密敏感字段）
  */
 async function writeFullConfig(config: any): Promise<void> {
   const configPath = await getConfigFilePath()
   await fs.ensureDir(path.dirname(configPath))
-  await fs.writeJson(configPath, config, { spaces: 2 })
+  await fs.writeJson(configPath, encryptSensitiveFields(config), { spaces: 2 })
 }
 
 // 获取所有配置

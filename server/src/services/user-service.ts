@@ -100,7 +100,7 @@ class UserService {
   private async createDefaultAdmin(): Promise<void> {
     const adminExists = this.db.prepare('SELECT id FROM users WHERE username = ?').get('admin')
     if (!adminExists) {
-      const adminPassword = process.env.ADMIN_PASSWORD || crypto.randomBytes(4).toString('hex')
+      const adminPassword = process.env.ADMIN_PASSWORD || crypto.randomBytes(16).toString('hex')
       const hashedPassword = await bcrypt.hash(adminPassword, 10)
       this.db.prepare(`
         INSERT INTO users (id, username, password, role, status, password_changed)
