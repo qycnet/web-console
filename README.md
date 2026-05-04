@@ -6,6 +6,28 @@
 
 OpenClaw 的现代化 Web 管理界面，提供配置管理、文件操作、技能中心、Agent 管理等完整功能。
 
+<div align="center">
+  <div style="display: flex; gap: 12px; overflow-x: auto; padding: 16px 0; scroll-snap-type: x mandatory; justify-content: flex-start; max-width: 100%; -webkit-overflow-scrolling: touch;">
+
+  <img src="docs/screenshots/01-dashboard.jpg" alt="仪表盘" style="height: 260px; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.15); scroll-snap-align: start; flex-shrink: 0;" />
+
+  <img src="docs/screenshots/02-skills.jpg" alt="技能中心" style="height: 260px; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.15); scroll-snap-align: start; flex-shrink: 0;" />
+
+  <img src="docs/screenshots/03-agents.jpg" alt="Agent管理" style="height: 260px; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.15); scroll-snap-align: start; flex-shrink: 0;" />
+
+  <img src="docs/screenshots/04-chat-empty.jpg" alt="对话首页" style="height: 260px; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.15); scroll-snap-align: start; flex-shrink: 0;" />
+
+  <img src="docs/screenshots/05-chat-stream.jpg" alt="SSE流式对话" style="height: 260px; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.15); scroll-snap-align: start; flex-shrink: 0;" />
+
+  <img src="docs/screenshots/06-agent-create.jpg" alt="新建Agent" style="height: 260px; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.15); scroll-snap-align: start; flex-shrink: 0;" />
+
+  <img src="docs/screenshots/07-chat-skills.jpg" alt="Agent技能对话" style="height: 260px; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.15); scroll-snap-align: start; flex-shrink: 0;" />
+
+  </div>
+
+  <p style="color: #888; font-size: 13px; margin-top: 4px;"><</p>
+</div>
+
 ## ✨ 功能特性
 
 ### 核心功能
