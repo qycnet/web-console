@@ -499,7 +499,8 @@ async function loadProviderModels(provider: string) {
 
 async function loadAvailableSkills() {
   try {
-    const skills = await api.skills.installed()
+    // 显示全部技能市场中的技能供选择
+    const skills = await api.skills.list()
     availableSkills.value = skills.map((s: any) => ({
       label: s.nameZh || s.name || s.id,
       value: s.id || s.name
@@ -665,8 +666,8 @@ async function handleEditAgent() {
 
 function handleRemoveSkill(skill: string) {
   if (!selectedAgent.value) return
-  // 走后端 API 卸载技能
-  api.skills.uninstall(skill)
+  // 通过 Agent 专属 API 卸载技能
+  api.agents.skills.uninstall(selectedAgent.value.id, skill)
     .then(() => {
       const idx = selectedAgent.value!.skills.indexOf(skill)
       if (idx !== -1) selectedAgent.value!.skills.splice(idx, 1)
@@ -680,8 +681,8 @@ function handleRemoveSkill(skill: string) {
 async function handleAddSkill() {
   if (!newSkill.value || !selectedAgent.value) return
   try {
-    // 走后端 API 安装技能
-    await api.skills.install(newSkill.value)
+    // 通过 Agent 专属 API 安装技能（复制 SKILL.md 到 workspace/skills/）
+    await api.agents.skills.install(selectedAgent.value.id, newSkill.value)
     selectedAgent.value.skills.push(newSkill.value)
     message.success(`技能「${newSkill.value}」已安装`)
   } catch (err: any) {

@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express'
 import jwt from 'jsonwebtoken'
 import { getJwtSecret } from '../utils/jwt-secret.js'
 import { openclawService } from '../services/openclaw-service.js'
-import { chatStream, generateSessionId, type AgentChatConfig } from '../services/deepseek-service.js'
+import { chatStream, generateSessionId, loadAgentSkillsContent, type AgentChatConfig } from '../services/deepseek-service.js'
 import { database } from '../services/database.js'
 import { logger } from '../utils/logger.js'
 
@@ -86,6 +86,7 @@ router.post('/group', async (req: Request, res: Response) => {
           id: agentInfo.id,
           name: agentInfo.name,
           persona: agentInfo.persona,
+          skillsContent: await loadAgentSkillsContent(agentInfo.id),
           provider: agentInfo.provider || 'deepseek',
           model: agentInfo.model || 'deepseek-chat',
           apiKey: agentInfo.apiKey || undefined,
@@ -100,6 +101,7 @@ router.post('/group', async (req: Request, res: Response) => {
         agentConfig = {
           id: agentId,
           name: agentId === 'main' ? 'Main Agent' : agentId,
+          skillsContent: await loadAgentSkillsContent(agentId),
           provider: parts.length > 1 ? parts[0] : 'deepseek',
           model: parts.length > 1 ? parts[1] : parts[0],
           temperature: 0.7,

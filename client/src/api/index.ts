@@ -244,6 +244,16 @@ export const api = {
         instance.post(`/agents/${agentId}/sessions`, { title }),
       delete: (agentId: string, sessionId: string) =>
         instance.delete(`/agents/${agentId}/sessions/${sessionId}`)
+    },
+
+    // ====== Agent 技能管理 ======
+    skills: {
+      list: (agentId: string) =>
+        instance.get<{ skills: Array<{ id: string; name?: string; description?: string }> }>(`/agents/${agentId}/skills`),
+      install: (agentId: string, skillId: string) =>
+        instance.post(`/agents/${agentId}/skills/${skillId}`),
+      uninstall: (agentId: string, skillId: string) =>
+        instance.delete(`/agents/${agentId}/skills/${skillId}`)
     }
   },
 

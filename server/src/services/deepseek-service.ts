@@ -4,10 +4,34 @@ import crypto from 'crypto'
 import { database } from './database.js'
 import { logger } from '../utils/logger.js'
 
+// Agent workspace 技能目录：server/data/agents/{agentId}/workspace/skills/
+export const AGENTS_DATA_DIR = path.join(process.cwd(), 'data', 'agents')
+
+/**
+ * 读取 Agent 绑定的技能文档内容
+ * 遍历 workspace/skills/{skillId}/SKILL.md，拼接为完整 markdown
+ */
+export async function loadAgentSkillsContent(agentId: string): Promise<string> {
+  const skillsDir = path.join(AGENTS_DATA_DIR, agentId, 'workspace', 'skills')
+  if (!await fs.pathExists(skillsDir)) return ''
+  const entries = await fs.readdir(skillsDir, { withFileTypes: true })
+  const parts: string[] = []
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const skillMdPath = path.join(skillsDir, entry.name, 'SKILL.md')
+    if (await fs.pathExists(skillMdPath)) {
+      const content = await fs.readFile(skillMdPath, 'utf-8')
+      parts.push(`### ${entry.name}\n\n${content}`)
+    }
+  }
+  return parts.join('\n\n---\n\n')
+}
+
 export interface AgentChatConfig {
   id: string
   name: string
   persona?: string
+  skillsContent?: string        // 该 Agent 绑定的技能文档内容（SKILL.md 拼接）
   provider: string
   model: string
   apiKey?: string            // agent 级别的 API Key（暂未启用，预留）
@@ -25,6 +49,7 @@ type ErrorCallback = (error: string) => void
  */
 function buildMessages(
   persona: string | undefined,
+  skillsContent: string | undefined,   // ← 新增参数
   history: any[],
   message: string
 ): Array<{ role: string; content: string }> {
@@ -33,6 +58,14 @@ function buildMessages(
   // 人设注入
   if (persona) {
     messages.push({ role: 'system', content: persona })
+  }
+
+  // 技能注入（在 system prompt 中追加可用工具说明）
+  if (skillsContent) {
+    messages.push({
+      role: 'system',
+      content: `## 可用技能\n\n${skillsContent}`
+    })
   }
 
   // 历史消息（最近 30 条，控制上下文窗口）
@@ -179,7 +212,7 @@ export async function chatStream(
     const history = database.getRecentMessages(sessionId, 50)
 
     // 2. 构建 messages
-    const messages = buildMessages(agent.persona, history, message)
+    const messages = buildMessages(agent.persona, agent.skillsContent, history, message)
 
     // 3. 获取 API key 和 base URL（从 config.json providers 配置）
     const apiKey = await resolveApiKey(agent)

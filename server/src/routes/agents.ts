@@ -3,10 +3,12 @@ import { authMiddleware, requireRole, auditLog } from '../middleware/auth.js'
 import { openclawService } from '../services/openclaw-service.js'
 import { taskService } from '../services/task-service.js'
 import { database } from '../services/database.js'
-import { chatStream, generateSessionId, type AgentChatConfig } from '../services/deepseek-service.js'
+import { chatStream, generateSessionId, loadAgentSkillsContent, AGENTS_DATA_DIR, type AgentChatConfig } from '../services/deepseek-service.js'
 import { logger } from '../utils/logger.js'
 import crypto from 'crypto'
 import jwt from 'jsonwebtoken'
+import fs from 'fs-extra'
+import path from 'path'
 import { getJwtSecret } from '../utils/jwt-secret.js'
 
 const router = Router()
@@ -103,6 +105,7 @@ router.get('/:agentId/chat/stream', async (req: Request, res: Response) => {
         id: agentInfo.id,
         name: agentInfo.name,
         persona: agentInfo.persona,
+        skillsContent: await loadAgentSkillsContent(agentInfo.id),
         provider: agentInfo.provider || 'deepseek',
         model: agentInfo.model || 'deepseek-chat',
         apiKey: agentInfo.apiKey || undefined,
@@ -118,6 +121,7 @@ router.get('/:agentId/chat/stream', async (req: Request, res: Response) => {
       agentConfig = {
         id: agentId,
         name: agentId === 'main' ? 'Main Agent' : agentId,
+        skillsContent: await loadAgentSkillsContent(agentId),
         provider: parts.length > 1 ? parts[0] : 'deepseek',
         model: parts.length > 1 ? parts[1] : parts[0],
         temperature: 0.7,
@@ -537,5 +541,141 @@ router.get('/:agentId/sessions/:sessionId/export/markdown', async (req: Request,
     res.status(500).json({ error: '导出会话失败' })
   }
 })
+
+/**
+ * 读取 Agent 注册表
+ */
+async function readRegistry(): Promise<Record<string, any>> {
+  const registryPath = path.join(AGENTS_DATA_DIR, 'registry.json')
+  if (!await fs.pathExists(registryPath)) return {}
+  return await fs.readJson(registryPath)
+}
+
+/**
+ * 保存 Agent 注册表
+ */
+async function writeRegistry(registry: Record<string, any>): Promise<void> {
+  const registryPath = path.join(AGENTS_DATA_DIR, 'registry.json')
+  await fs.ensureDir(path.dirname(registryPath))
+  await fs.writeJson(registryPath, registry, { spaces: 2 })
+}
+
+/**
+ * GET /api/agents/:agentId/skills
+ * 获取 Agent 已绑定的技能列表（读取 workspace/skills/ 目录）
+ */
+router.get('/:agentId/skills', async (req: Request, res: Response) => {
+  try {
+    const { agentId } = req.params
+    const skillsDir = path.join(AGENTS_DATA_DIR, agentId, 'workspace', 'skills')
+    if (!await fs.pathExists(skillsDir)) {
+      return res.json({ skills: [] })
+    }
+    const entries = await fs.readdir(skillsDir, { withFileTypes: true })
+    const skills: Array<{ id: string; name?: string; description?: string }> = []
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const metaPath = path.join(skillsDir, entry.name, '_meta.json')
+      let name: string | undefined
+      let description: string | undefined
+      if (await fs.pathExists(metaPath)) {
+        try {
+          const meta = await fs.readJson(metaPath)
+          name = meta.name || entry.name
+          description = meta.description
+        } catch { /* ignore */ }
+      }
+      skills.push({ id: entry.name, name, description })
+    }
+    res.json({ skills })
+  } catch (error) {
+    logger.error('Failed to list agent skills:', error)
+    res.status(500).json({ error: '获取技能列表失败' })
+  }
+})
+
+/**
+ * POST /api/agents/:agentId/skills/:skillId
+ * 将全局技能安装到该 Agent（管理员权限）
+ */
+router.post('/:agentId/skills/:skillId',
+  requireRole('admin'),
+  async (req: Request, res: Response) => {
+    try {
+      const { agentId, skillId } = req.params
+
+      // ① 读取 OpenClaw 全局技能库
+      const discovered = await openclawService.discover()
+      if (!discovered) {
+        return res.status(500).json({ error: '无法找到 OpenClaw 安装目录' })
+      }
+      const globalSkillDir = path.join(discovered.installDir, 'workspace', 'skills', skillId)
+      if (!await fs.pathExists(globalSkillDir)) {
+        return res.status(404).json({ error: `全局技能 "${skillId}" 不存在` })
+      }
+      if (!await fs.pathExists(path.join(globalSkillDir, 'SKILL.md'))) {
+        return res.status(404).json({ error: `技能 "${skillId}" 缺少 SKILL.md` })
+      }
+
+      // ② 复制到 Agent workspace/skills/
+      const agentSkillDir = path.join(AGENTS_DATA_DIR, agentId, 'workspace', 'skills', skillId)
+      if (await fs.pathExists(agentSkillDir)) {
+        return res.status(409).json({ error: `技能 "${skillId}" 已安装到该 Agent` })
+      }
+      await fs.ensureDir(agentSkillDir)
+      await fs.copy(globalSkillDir, agentSkillDir)
+
+      // ③ 更新 Agent 注册表 skills[]
+      const registry = await readRegistry()
+      if (registry[agentId]) {
+        if (!registry[agentId].skills) registry[agentId].skills = []
+        if (!registry[agentId].skills.includes(skillId)) {
+          registry[agentId].skills.push(skillId)
+        }
+        await writeRegistry(registry)
+      }
+
+      logger.info(`Skill "${skillId}" installed to agent "${agentId}"`)
+      res.json({ message: '技能安装成功', skillId })
+    } catch (error: any) {
+      logger.error('Failed to install skill:', error)
+      res.status(500).json({ error: error.message || '技能安装失败' })
+    }
+  }
+)
+
+/**
+ * DELETE /api/agents/:agentId/skills/:skillId
+ * 从该 Agent 卸载技能（管理员权限）
+ */
+router.delete('/:agentId/skills/:skillId',
+  requireRole('admin'),
+  async (req: Request, res: Response) => {
+    try {
+      const { agentId, skillId } = req.params
+      const agentSkillDir = path.join(AGENTS_DATA_DIR, agentId, 'workspace', 'skills', skillId)
+
+      if (!await fs.pathExists(agentSkillDir)) {
+        return res.status(404).json({ error: `Agent 未安装技能 "${skillId}"` })
+      }
+
+      // ① 删除技能目录
+      await fs.remove(agentSkillDir)
+
+      // ② 更新注册表
+      const registry = await readRegistry()
+      if (registry[agentId]?.skills) {
+        registry[agentId].skills = registry[agentId].skills.filter((s: string) => s !== skillId)
+        await writeRegistry(registry)
+      }
+
+      logger.info(`Skill "${skillId}" removed from agent "${agentId}"`)
+      res.json({ message: '技能卸载成功', skillId })
+    } catch (error: any) {
+      logger.error('Failed to uninstall skill:', error)
+      res.status(500).json({ error: error.message || '技能卸载失败' })
+    }
+  }
+)
 
 export default router
