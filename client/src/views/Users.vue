@@ -61,24 +61,18 @@
             :disabled="isEditingSelf"
             :clearable="!isEditingSelf"
           />
-          <template #tip v-if="isEditingSelf">
-            <span style="color: #999; font-size: 12px;">管理员不能在此处修改自己的密码，请在个人中心修改</span>
-          </template>
+          <div v-if="isEditingSelf" style="color: #999; font-size: 12px; line-height: 1.5; margin-top: 4px;">管理员不能在此处修改自己的密码，请在个人中心修改</div>
         </n-form-item>
         <n-form-item label="邮箱">
           <n-input v-model:value="editForm.email" placeholder="请输入邮箱" />
         </n-form-item>
         <n-form-item label="角色">
           <n-select v-model:value="editForm.role" :options="roleOptions" :disabled="isEditingSelf" />
-          <template #tip v-if="isEditingSelf">
-            <span style="color: #999; font-size: 12px;">不能修改自己的角色</span>
-          </template>
+          <div v-if="isEditingSelf" style="color: #999; font-size: 12px; line-height: 1.5; margin-top: 4px;">不能修改自己的角色</div>
         </n-form-item>
         <n-form-item label="状态">
           <n-select v-model:value="editForm.status" :options="statusOptions" :disabled="isEditingSelf" />
-          <template #tip v-if="isEditingSelf">
-            <span style="color: #999; font-size: 12px;">不能修改自己的状态</span>
-          </template>
+          <div v-if="isEditingSelf" style="color: #999; font-size: 12px; line-height: 1.5; margin-top: 4px;">不能修改自己的状态</div>
         </n-form-item>
       </n-form>
       <template #footer>
