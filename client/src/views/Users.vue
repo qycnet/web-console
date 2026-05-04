@@ -106,7 +106,7 @@ import {
   TrashOutline,
   DocumentTextOutline
 } from '@vicons/ionicons5'
-import axios from 'axios'
+import { http } from '@/api'
 
 interface User {
   id: string
@@ -247,8 +247,8 @@ onMounted(loadUsers)
 async function loadUsers() {
   loading.value = true
   try {
-    const { data } = await axios.get('/api/users')
-    users.value = data.users
+    const result = await http.get('/users')
+    users.value = result.users
   } catch (error) {
     message.error('加载用户列表失败')
   } finally {
@@ -259,13 +259,13 @@ async function loadUsers() {
 async function handleCreate() {
   try {
     await createFormRef.value?.validate()
-    await axios.post('/api/users', createForm.value)
+    await http.post('/users', createForm.value)
     message.success('用户创建成功')
     showCreateModal.value = false
     createForm.value = { username: '', password: '', email: '', role: 'user' }
     loadUsers()
   } catch (error: any) {
-    message.error(error.response?.data?.error || '创建失败')
+    message.error(error.error || error.message || '创建失败')
   }
 }
 
@@ -282,12 +282,12 @@ function openEditModal(user: User) {
 
 async function handleEdit() {
   try {
-    await axios.put(`/api/users/${editForm.value.id}`, editForm.value)
+    await http.put(`/users/${editForm.value.id}`, editForm.value)
     message.success('用户信息已更新')
     showEditModal.value = false
     loadUsers()
   } catch (error: any) {
-    message.error(error.response?.data?.error || '更新失败')
+    message.error(error.error || error.message || '更新失败')
   }
 }
 
@@ -299,13 +299,13 @@ function handleDelete(user: User) {
     negativeText: '取消',
     onPositiveClick: async () => {
       try {
-        await axios.delete(`/api/users/${user.id}`, {
+        await http.delete(`/users/${user.id}`, {
           headers: { 'X-Confirm-Action': 'true' }
         })
         message.success('用户已删除')
         loadUsers()
       } catch (error: any) {
-        message.error(error.response?.data?.error || '删除失败')
+        message.error(error.error || error.message || '删除失败')
       }
     }
   })
@@ -315,10 +315,10 @@ async function viewAuditLogs(userId: string) {
   auditLoading.value = true
   showAuditModal.value = true
   try {
-    const { data } = await axios.get('/api/users/audit-logs', {
+    const logs = await http.get('/users/audit-logs', {
       params: { userId, limit: 50 }
     })
-    auditLogs.value = data
+    auditLogs.value = logs
   } catch (error) {
     message.error('加载审计日志失败')
   } finally {

@@ -267,6 +267,7 @@ export const api = {
   }
 }
 
+export { instance as http }
 export default api
 
 // Re-export common types used in views
