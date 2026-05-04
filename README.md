@@ -25,7 +25,7 @@ OpenClaw 的现代化 Web 管理界面，提供配置管理、文件操作、技
 
   </div>
 
-  <p style="color: #888; font-size: 13px; margin-top: 4px;"><</p>
+  <p style="color: #888; font-size: 13px; margin-top: 4px;">👈 左右滑动浏览截图</p>
 </div>
 
 ## ✨ 功能特性
