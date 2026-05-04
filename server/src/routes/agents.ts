@@ -222,11 +222,10 @@ router.post('/:agentId/skills/:skillId',
       await fs.ensureDir(agentSkillDir)
       await fs.copy(globalSkillDir, agentSkillDir)
       const registry = await readRegistry()
-      if (registry[agentId]) {
-        if (!registry[agentId].skills) registry[agentId].skills = []
-        if (!registry[agentId].skills.includes(skillId)) registry[agentId].skills.push(skillId)
-        await writeRegistry(registry)
-      }
+      if (!registry[agentId]) registry[agentId] = {}
+      if (!registry[agentId].skills) registry[agentId].skills = []
+      if (!registry[agentId].skills.includes(skillId)) registry[agentId].skills.push(skillId)
+      await writeRegistry(registry)
       logger.info(`Skill "${skillId}" installed to agent "${agentId}"`)
       res.json({ message: '技能安装成功', skillId })
     } catch (error: any) {
