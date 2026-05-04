@@ -1,8 +1,6 @@
 import Database, { Database as DatabaseType } from 'better-sqlite3'
 import path from 'path'
 import fs from 'fs-extra'
-import bcrypt from 'bcrypt'
-import crypto from 'crypto'
 
 const OPENCLAW_DIR = process.env.OPENCLAW_DIR || path.join(process.env.HOME || '', '.openclaw')
 const DB_PATH = path.join(OPENCLAW_DIR, 'web-console.db')
@@ -12,17 +10,8 @@ fs.ensureDirSync(OPENCLAW_DIR)
 
 const db: DatabaseType = new Database(DB_PATH)
 
-// 初始化数据库表
+// 初始化数据库表（会话相关表，用户表由 UserService 管理）
 db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    username TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    role TEXT DEFAULT 'user',
-    password_changed INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
   CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT
@@ -50,56 +39,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id);
 `)
 
-// == 数据库迁移：补齐 users 表缺失的列（兼容旧的表结构） ==
-const usersColumns = db.prepare("PRAGMA table_info('users')").all() as any[]
-const existingCols = new Set(usersColumns.map((c: any) => c.name))
-const missingCols: { name: string; def: string }[] = [
-  { name: 'email', def: 'TEXT' },
-  { name: 'status', def: "TEXT DEFAULT 'active'" },
-  { name: 'updated_at', def: 'DATETIME' },
-  { name: 'last_login_at', def: 'DATETIME' },
-  { name: 'login_count', def: 'INTEGER DEFAULT 0' },
-]
-for (const col of missingCols) {
-  if (!existingCols.has(col.name)) {
-    db.exec(`ALTER TABLE users ADD COLUMN ${col.name} ${col.def}`)
-    console.log(`Database migration: added column ${col.name} to users table`)
-  }
-}
-
-// 初始化默认管理员账户（通过 ADMIN_PASSWORD 环境变量设置，否则随机生成并打印）
-const adminExists = db.prepare('SELECT id FROM users WHERE username = ?').get('admin')
-if (!adminExists) {
-  const adminPassword = process.env.ADMIN_PASSWORD || crypto.randomBytes(4).toString('hex')
-  const hashedPassword = bcrypt.hashSync(adminPassword, 10)
-  db.prepare(`
-    INSERT INTO users (id, username, password, role, password_changed)
-    VALUES (?, ?, ?, ?, ?)
-  `).run('user-1', 'admin', hashedPassword, 'admin', 0)
-  console.log('\n⚠️  [DEFAULT ADMIN] username: admin  password: ' + adminPassword + '\n')
-}
-
 export const database = {
-  getUserByUsername: (username: string) => {
-    return db.prepare('SELECT * FROM users WHERE username = ?').get(username) as any
-  },
-
-  getUserById: (id: string) => {
-    return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as any
-  },
-
-  createUser: (id: string, username: string, password: string, role: string = 'user') => {
-    const hashedPassword = bcrypt.hashSync(password, 10)
-    return db.prepare(`
-      INSERT INTO users (id, username, password, role, password_changed)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(id, username, hashedPassword, role, 1)
-  },
-
-  markPasswordChanged: (id: string) => {
-    return db.prepare('UPDATE users SET password_changed = 1 WHERE id = ?').run(id)
-  },
-
   getSetting: (key: string) => {
     const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as any
     return row ? row.value : null

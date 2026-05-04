@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express'
 import jwt from 'jsonwebtoken'
-import bcrypt from 'bcrypt'
-import { database as db } from '../services/database.js'
+import { db } from '../services/database.js'
+import { UserService } from '../services/user-service.js'
 import { logger } from '../utils/logger.js'
 import { strictRateLimiter } from '../middleware/auth.js'
 import { v4 as uuidv4 } from 'uuid'
@@ -10,6 +10,7 @@ import { getJwtSecret } from '../utils/jwt-secret.js'
 
 const router = Router()
 const JWT_SECRET = getJwtSecret()
+const userService = new UserService(db)
 
 // 存储 refresh token 的简单内存 Map（生产环境应使用数据库）
 const refreshTokens = new Map<string, { userId: string; role: string; expiresAt: number }>()
@@ -44,41 +45,47 @@ router.post('/login', strictRateLimiter, async (req: Request, res: Response) => 
       return res.status(400).json({ error: '用户名和密码必填' })
     }
 
-    const user = db.getUserByUsername(username)
-    if (!user) {
-      return res.status(401).json({ error: '用户名或密码错误' })
+    const ip = req.ip || req.socket.remoteAddress || ''
+
+    try {
+      const user = await userService.validateLogin(username, password, ip)
+      if (!user) {
+        return res.status(401).json({ error: '用户名或密码错误' })
+      }
+
+      // 通过 UserService.getUserByUsername 获取 password_changed
+      const userWithPwd = userService.getUserByUsername(username)
+      const needsPasswordChange = userWithPwd?.password_changed === 0
+
+      const accessToken = jwt.sign(
+        { userId: user.id, role: user.role, type: 'access' },
+        JWT_SECRET,
+        { expiresIn: ACCESS_TOKEN_EXPIRY }
+      )
+
+      // 生成 refresh token
+      const refreshToken = uuidv4()
+      refreshTokens.set(refreshToken, {
+        userId: user.id,
+        role: user.role,
+        expiresAt: Date.now() + REFRESH_TOKEN_EXPIRY_MS
+      })
+
+      logger.info(`User logged in: ${username}`)
+      res.json({
+        token: accessToken,
+        refreshToken,
+        expiresIn: 3600,
+        needsPasswordChange,
+        user: { id: user.id, username: user.username, role: user.role }
+      })
+    } catch (error: any) {
+      // Handle locked/inactive errors from validateLogin
+      if (error.message === '账户已被锁定' || error.message === '账户已停用') {
+        return res.status(403).json({ error: error.message })
+      }
+      throw error
     }
-
-    const validPassword = await bcrypt.compare(password, user.password)
-    if (!validPassword) {
-      return res.status(401).json({ error: '用户名或密码错误' })
-    }
-
-    // 检查管理员是否首次登录（需要强制修改默认密码）
-    const needsPasswordChange = user.password_changed === 0
-
-    const accessToken = jwt.sign(
-      { userId: user.id, role: user.role, type: 'access' },
-      JWT_SECRET,
-      { expiresIn: ACCESS_TOKEN_EXPIRY }
-    )
-
-    // 生成 refresh token
-    const refreshToken = uuidv4()
-    refreshTokens.set(refreshToken, {
-      userId: user.id!,
-      role: user.role,
-      expiresAt: Date.now() + REFRESH_TOKEN_EXPIRY_MS
-    })
-
-    logger.info(`User logged in: ${username}`)
-    res.json({
-      token: accessToken,
-      refreshToken,
-      expiresIn: 3600, // 1小时，供前端计算自动刷新时机
-      needsPasswordChange,
-      user: { id: user.id, username: user.username, role: user.role }
-    })
   } catch (error) {
     logger.error('Login error:', error)
     res.status(500).json({ error: '登录失败' })
@@ -148,7 +155,7 @@ router.get('/me', (req: Request, res: Response) => {
   const token = authHeader.substring(7)
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as any
-    const user = db.getUserById(decoded.userId)
+    const user = userService.getUserById(decoded.userId)
     if (!user) {
       return res.status(401).json({ error: '用户不存在' })
     }

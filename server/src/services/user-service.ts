@@ -28,6 +28,12 @@ export interface UserUpdateInput {
   role?: 'admin' | 'user' | 'viewer'
   status?: 'active' | 'inactive' | 'locked'
   password?: string
+  password_changed?: number
+}
+
+export interface UserWithPassword extends User {
+  password: string
+  password_changed: number
 }
 
 export interface AuditLog {
@@ -61,6 +67,7 @@ class UserService {
         email TEXT,
         role TEXT DEFAULT 'user',
         status TEXT DEFAULT 'active',
+        password_changed INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         last_login_at DATETIME,
@@ -96,9 +103,9 @@ class UserService {
       const adminPassword = process.env.ADMIN_PASSWORD || crypto.randomBytes(4).toString('hex')
       const hashedPassword = await bcrypt.hash(adminPassword, 10)
       this.db.prepare(`
-        INSERT INTO users (id, username, password, role, status)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(uuidv4(), 'admin', hashedPassword, 'admin', 'active')
+        INSERT INTO users (id, username, password, role, status, password_changed)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(uuidv4(), 'admin', hashedPassword, 'admin', 'active', 0)
       logger.info(`Default admin account created (username: admin, password: ${adminPassword})`)
       console.log(`\n⚠️  [DEFAULT ADMIN] username: admin, password: ${adminPassword}\n`)
     }
@@ -155,12 +162,12 @@ class UserService {
   /**
    * 根据用户名获取用户
    */
-  getUserByUsername(username: string): (User & { password: string }) | null {
+  getUserByUsername(username: string): UserWithPassword | null {
     const row = this.db.prepare(`
       SELECT * FROM users WHERE username = ?
     `).get(username) as any
 
-    return row ? { ...this.mapRowToUser(row), password: row.password } : null
+    return row ? { ...this.mapRowToUser(row), password: row.password, password_changed: row.password_changed } : null
   }
 
   /**
