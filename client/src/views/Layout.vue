@@ -209,7 +209,8 @@ const baseMenuOptions: any[] = [
     label: '配置管理',
     key: 'config',
     type: 'default' as const,
-    icon: () => h(NIcon, null, { default: () => h(SettingsOutline) })
+    icon: () => h(NIcon, null, { default: () => h(SettingsOutline) }),
+    show: computed(() => userStore.isAdmin)
   },
   {
     label: '文件管理',
