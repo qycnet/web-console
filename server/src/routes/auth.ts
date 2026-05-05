@@ -12,23 +12,10 @@ const router = Router()
 const JWT_SECRET = getJwtSecret()
 const userService = new UserService(db)
 
-// 存储 refresh token 的简单内存 Map（生产环境应使用数据库）
-const refreshTokens = new Map<string, { userId: string; role: string; expiresAt: number }>()
-
 // Access token 有效期
 const ACCESS_TOKEN_EXPIRY = '1h'
 // Refresh token 有效期（30天）
 const REFRESH_TOKEN_EXPIRY_MS = 30 * 24 * 3600 * 1000
-
-// 清理过期的 refresh token
-setInterval(() => {
-  const now = Date.now()
-  for (const [token, data] of refreshTokens) {
-    if (data.expiresAt < now) {
-      refreshTokens.delete(token)
-    }
-  }
-}, 3600000) // 每小时清理一次
 
 // 检查是否为本地访问
 function isLocalRequest(req: Request): boolean {
@@ -65,11 +52,7 @@ router.post('/login', strictRateLimiter, async (req: Request, res: Response) => 
 
       // 生成 refresh token
       const refreshToken = uuidv4()
-      refreshTokens.set(refreshToken, {
-        userId: user.id,
-        role: user.role,
-        expiresAt: Date.now() + REFRESH_TOKEN_EXPIRY_MS
-      })
+      userService.setRefreshToken(refreshToken, user.id, user.role, Date.now() + REFRESH_TOKEN_EXPIRY_MS)
 
       logger.info(`User logged in: ${username}`)
       res.json({
@@ -101,14 +84,14 @@ router.post('/refresh', (req: Request, res: Response) => {
       return res.status(400).json({ error: 'refreshToken 不能为空' })
     }
 
-    const tokenData = refreshTokens.get(refreshToken)
+    const tokenData = userService.getRefreshToken(refreshToken)
     if (!tokenData) {
       return res.status(401).json({ error: 'Refresh token 无效或已过期' })
     }
 
     // 检查是否过期
     if (tokenData.expiresAt < Date.now()) {
-      refreshTokens.delete(refreshToken)
+      userService.deleteRefreshToken(refreshToken)
       return res.status(401).json({ error: 'Refresh token 已过期，请重新登录' })
     }
 
@@ -121,12 +104,8 @@ router.post('/refresh', (req: Request, res: Response) => {
 
     // 滚动续期 refresh token
     const newRefreshToken = uuidv4()
-    refreshTokens.set(newRefreshToken, {
-      userId: tokenData.userId,
-      role: tokenData.role,
-      expiresAt: Date.now() + REFRESH_TOKEN_EXPIRY_MS
-    })
-    refreshTokens.delete(refreshToken)
+    userService.deleteRefreshToken(refreshToken)
+    userService.setRefreshToken(newRefreshToken, tokenData.userId, tokenData.role, Date.now() + REFRESH_TOKEN_EXPIRY_MS)
 
     logger.info(`Token refreshed for user ${tokenData.userId}`)
     res.json({
@@ -142,6 +121,8 @@ router.post('/refresh', (req: Request, res: Response) => {
 
 // 登出
 router.post('/logout', (req: Request, res: Response) => {
+  const { refreshToken } = req.body
+  if (refreshToken) userService.deleteRefreshToken(refreshToken)
   res.json({ message: '已登出' })
 })
 

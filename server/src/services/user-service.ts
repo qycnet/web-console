@@ -88,7 +88,22 @@ class UserService {
 
       CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);
       CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp);
+
+      CREATE TABLE IF NOT EXISTS refresh_tokens (
+        token TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);
+      CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires ON refresh_tokens(expires_at);
     `)
+
+    // 迁移：增加失败计数和锁定时间字段（幂等）
+    try { this.db.exec('ALTER TABLE users ADD COLUMN failed_attempts INTEGER DEFAULT 0'); } catch {}
+    try { this.db.exec('ALTER TABLE users ADD COLUMN locked_until DATETIME'); } catch {}
 
     // 创建默认管理员
     this.createDefaultAdmin()
@@ -239,18 +254,40 @@ class UserService {
       return null
     }
 
+    // 检查锁定状态（含自动解锁）
     if (user.status === 'locked') {
-      throw new Error('账户已被锁定')
+      if (user.locked_until && new Date(user.locked_until) > new Date()) {
+        throw new Error('账户已被锁定，请耐心等待后重试')
+      } else {
+        // 锁定时间已过，自动解锁并重置计数
+        this.db.prepare(`UPDATE users SET status = 'active', failed_attempts = 0, locked_until = NULL WHERE id = ?`).run(user.id)
+      }
     }
 
     if (user.status === 'inactive') {
       throw new Error('账户已停用')
     }
 
+    const MAX_ATTEMPTS = 5
+    const LOCK_DURATION_MINUTES = 15
+
     const validPassword = await bcrypt.compare(password, user.password)
     if (!validPassword) {
+      // 递增失败计数
+      const newAttempts = (user.failed_attempts || 0) + 1
+      if (newAttempts >= MAX_ATTEMPTS) {
+        const lockedUntil = new Date(Date.now() + LOCK_DURATION_MINUTES * 60 * 1000).toISOString()
+        this.db.prepare(`UPDATE users SET status = 'locked', failed_attempts = ?, locked_until = ? WHERE id = ?`).run(newAttempts, lockedUntil, user.id)
+        logger.warn(`User ${username} locked due to ${newAttempts} failed attempts`)
+      } else {
+        this.db.prepare(`UPDATE users SET failed_attempts = ? WHERE id = ?`).run(newAttempts, user.id)
+      }
+      this.addAuditLog(user.id, 'login_failed', 'auth', `密码错误 (${newAttempts}/${MAX_ATTEMPTS})`, ip)
       return null
     }
+
+    // 登录成功，重置失败计数
+    this.db.prepare(`UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?`).run(user.id)
 
     // 更新登录信息
     this.db.prepare(`
@@ -376,6 +413,34 @@ class UserService {
   getUserCount(): number {
     const row = this.db.prepare('SELECT COUNT(*) as count FROM users').get() as any
     return row.count
+  }
+
+  // ==================== Refresh Token ====================
+
+  setRefreshToken(token: string, userId: string, role: string, expiresAt: number): void {
+    this.db.prepare(`
+      INSERT OR REPLACE INTO refresh_tokens (token, user_id, role, expires_at)
+      VALUES (?, ?, ?, ?)
+    `).run(token, userId, role, expiresAt)
+  }
+
+  getRefreshToken(token: string): { userId: string; role: string; expiresAt: number } | null {
+    const row = this.db.prepare('SELECT * FROM refresh_tokens WHERE token = ?').get(token) as any
+    if (!row) return null
+    return { userId: row.user_id, role: row.role, expiresAt: row.expires_at }
+  }
+
+  deleteRefreshToken(token: string): void {
+    this.db.prepare('DELETE FROM refresh_tokens WHERE token = ?').run(token)
+  }
+
+  cleanExpiredRefreshTokens(): void {
+    this.db.prepare('DELETE FROM refresh_tokens WHERE expires_at < ?').run(Date.now())
+  }
+
+  // 清除用户的所有 refresh token（用于密码修改/管理员踢人）
+  deleteUserRefreshTokens(userId: string): void {
+    this.db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(userId)
   }
 }
 
