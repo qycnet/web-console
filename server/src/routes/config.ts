@@ -1,11 +1,9 @@
 import { Router, Response, Request } from 'express'
 import fs from 'fs-extra'
 import path from 'path'
-import crypto from 'crypto'
 import { logger } from '../utils/logger.js'
 import { openclawService } from '../services/openclaw-service.js'
 import { authMiddleware, requireRole } from '../middleware/auth.js'
-import { encryptSensitiveFields, decryptSensitiveFields } from '../services/encryption-service.js'
 import { database } from '../services/database.js'
 
 const router = Router()
@@ -43,8 +41,7 @@ async function getConfigFilePath(): Promise<string> {
 async function readFullConfig(): Promise<any> {
   const configPath = await getConfigFilePath()
   if (!await fs.pathExists(configPath)) return {}
-  const raw = await fs.readJson(configPath)
-  return decryptSensitiveFields(raw)
+  return fs.readJson(configPath)
 }
 
 /**
@@ -53,7 +50,7 @@ async function readFullConfig(): Promise<any> {
 async function writeFullConfig(config: any): Promise<void> {
   const configPath = await getConfigFilePath()
   await fs.ensureDir(path.dirname(configPath))
-  await fs.writeJson(configPath, encryptSensitiveFields(config), { spaces: 2 })
+  await fs.writeJson(configPath, config, { spaces: 2 })
 }
 
 // 获取所有配置
