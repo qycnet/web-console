@@ -14,6 +14,8 @@ export interface User {
   updatedAt: Date
   lastLoginAt?: Date
   loginCount: number
+  failedAttempts?: number
+  lockedUntil?: Date | string
 }
 
 export interface UserCreateInput {
@@ -256,7 +258,7 @@ class UserService {
 
     // 检查锁定状态（含自动解锁）
     if (user.status === 'locked') {
-      if (user.locked_until && new Date(user.locked_until) > new Date()) {
+      if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
         throw new Error('账户已被锁定，请耐心等待后重试')
       } else {
         // 锁定时间已过，自动解锁并重置计数
@@ -274,7 +276,7 @@ class UserService {
     const validPassword = await bcrypt.compare(password, user.password)
     if (!validPassword) {
       // 递增失败计数
-      const newAttempts = (user.failed_attempts || 0) + 1
+      const newAttempts = (user.failedAttempts || 0) + 1
       if (newAttempts >= MAX_ATTEMPTS) {
         const lockedUntil = new Date(Date.now() + LOCK_DURATION_MINUTES * 60 * 1000).toISOString()
         this.db.prepare(`UPDATE users SET status = 'locked', failed_attempts = ?, locked_until = ? WHERE id = ?`).run(newAttempts, lockedUntil, user.id)
@@ -403,7 +405,9 @@ class UserService {
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
       lastLoginAt: row.last_login_at ? new Date(row.last_login_at) : undefined,
-      loginCount: row.login_count || 0
+      loginCount: row.login_count || 0,
+      failedAttempts: row.failed_attempts || 0,
+      lockedUntil: row.locked_until || null
     }
   }
 
